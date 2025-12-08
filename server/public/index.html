@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>Shoot Poker - Multiplayer Card Table</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="start-menu-root" class="start-menu-root">
+      <img src="/StartMenu/StartingBackgroundImage.jpg" alt="" class="start-menu-background" />
+      <div class="start-menu-layer">
+        <div class="start-menu-canvas" id="start-menu-canvas">
+          <img id="start-menu-image" alt="Start menu" />
+          <div class="start-menu-overlay-layer" id="start-menu-overlay-layer"></div>
+        </div>
+        <button type="button" class="start-menu-close hidden" id="start-menu-close-btn">Back</button>
+        <div class="start-menu-modal hidden" id="start-menu-rules-modal">
+          <img src="/StartMenu/StartMenuRulesMenu.jpg" alt="Rules menu" />
+          <button type="button" id="start-menu-rules-close">Close</button>
+        </div>
+      </div>
+    </div>
+    <div id="app" class="game-shell hidden">
+      <header class="app-header">
+        <div>
+          <h1>Shoot Poker</h1>
+          <p class="tagline">Up to six-player online Shoot Poker</p>
+          <p class="tagline">A game of chance, to win big 'Shoot!' when you think you've got a higher card of the same suit</p>
+        </div>
+        <div class="status-badges" id="status-badges"></div>
+      </header>
+
+      <!-- Info Popup Modal -->
+      <div class="info-modal hidden" id="info-modal">
+        <div class="info-modal-overlay"></div>
+        <div class="info-modal-content">
+          <div class="info-modal-header">
+            <h2>User Information</h2>
+            <button type="button" class="info-modal-close" id="info-modal-close">&times;</button>
+          </div>
+          <div class="info-modal-body">
+            <div class="info-row">
+              <span class="info-label">Avatar:</span>
+              <span class="info-value">Unavailable</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Username:</span>
+              <span class="info-value" id="info-username">-</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Current Balance:</span>
+              <span class="info-value" id="info-balance">-</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Name:</span>
+              <span class="info-value">Unavailable</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Country:</span>
+              <span class="info-value">Unavailable</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Nationality:</span>
+              <span class="info-value">Unavailable</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Language:</span>
+              <span class="info-value">English</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">My Mobile:</span>
+              <span class="info-value">Unavailable</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">My Email:</span>
+              <span class="info-value">Unavailable</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rules & Definitions Popup Modal -->
+      <div class="rules-modal hidden" id="rules-modal">
+        <div class="rules-modal-overlay"></div>
+        <div class="rules-modal-content">
+          <div class="rules-modal-header">
+            <h2>The Rules & Definitions</h2>
+            <button type="button" class="rules-modal-close" id="rules-modal-close">&times;</button>
+          </div>
+          <div class="rules-modal-body">
+            <h3>Rules:</h3>
+            <ol class="rules-list">
+              <li>Dealer is designated from pulling the highest card at the start of the game</li>
+              <li>Always deals clockwise</li>
+              <li>Dealer is dealed a single card face up</li>
+              <li>Each player is given three cards face down</li>
+              <li>Dealer chooses their stake</li>
+              <li>Starting with the player to the left of the dealer player chooses whether to play a bet or 'Shoot' ultimately winning all or just their bet</li>
+              <li>Stake or Shoot amount is added to the pot</li>
+              <li>Shoot wins the full value of the pot if won</li>
+              <li>Players win by having a single card of the same suit and higher value to the dealers</li>
+              <li>Dealers win by making it through all the rounds and takes all for a small stake</li>
+              <li>Cashier closed during deals.</li>
+            </ol>
+            <h3>Definitions:</h3>
+            <dl class="definitions-list">
+              <dt>Pot:</dt>
+              <dd>All the money that can be won</dd>
+              <dt>Stake:</dt>
+              <dd>money to currently bet</dd>
+              <dt>All-In:</dt>
+              <dd>Maximum bet without shooting, if not enough balance to shoot.</dd>
+              <dt>Shoot:</dt>
+              <dd>To place the same amount thats in the middle to win back the pot.</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+      </header>
+
+      <main class="grid">
+
+        <section class="panel table-panel">
+          <div class="game-code" id="game-code"></div>
+          <div class="table" id="table">
+            <div class="table-circle" id="table-circle"></div>
+            <div class="pot" id="pot-display"></div>
+            <div class="round-indicator" id="round-indicator"></div>
+            <div class="dealer-card" id="dealer-card"></div>
+            <div class="table-ready" id="table-ready"></div>
+            <div class="table-actions-overlay hidden" id="table-actions"></div>
+            <div class="table-announcement hidden" id="table-announcement"></div>
+            <div class="deck" id="deck"></div>
+          </div>
+          <div class="bet-slider-container" id="bet-slider-container"></div>
+          <div class="ticker-tapes-container">
+            <div class="ticker-tape ticker-tape-situation" id="ticker-situation">
+              <div class="ticker-content"></div>
+            </div>
+            <div class="ticker-tape ticker-tape-instructions" id="ticker-instructions">
+              <div class="ticker-content"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="log-panel">
+          <h2>Activity</h2>
+          <div class="log" id="message-log"></div>
+        </section>
+      </main>
+    </div>
+    <div id="rotate-overlay" class="rotate-overlay hidden">
+      <div class="rotate-card">
+        <h2>Landscape Recommended</h2>
+        <p>Rotate your phone to landscape and ensure the view is fully zoomed out to play.</p>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

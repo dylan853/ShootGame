@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>Sign In - Shoot Poker</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <div>
+          <h1>Shoot Poker</h1>
+              <p class="tagline">Up to six-player online Shoot Poker</p>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="panel" id="auth-panel">
+          <h2>Sign In</h2>
+          <form id="login-form" class="stack">
+            <label for="username-input">Username</label>
+            <div class="inline">
+              <input id="username-input" name="username" placeholder="dealer_dylan" autocomplete="off" />
+              <button type="submit">Sign In</button>
+            </div>
+            <p class="helper-text">Each new username begins with £50.00 fake balance.</p>
+          </form>
+          <div id="user-summary" class="hidden">
+            <p class="user-line">Signed in as <span id="user-name"></span></p>
+            <p class="user-line">Balance: <span id="user-balance"></span></p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="/signin.js"></script>
+  </body>
+</html>
+
