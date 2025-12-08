@@ -95,7 +95,7 @@ body::before {
 .start-menu-canvas {
   position: relative;
   width: min(92vw, 900px);
-  pointer-events: none;
+  pointer-events: auto;
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 35px 70px rgba(0, 0, 0, 0.7);
@@ -110,7 +110,7 @@ body::before {
 .start-menu-overlay-layer {
   position: absolute;
   inset: 0;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .start-menu-overlay-layer > * {

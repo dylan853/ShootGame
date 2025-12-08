@@ -515,7 +515,7 @@ function addMenuFileField(rect, options = {}) {
   } else {
     wrapper.style.removeProperty('--preview-image');
     wrapper.classList.remove('has-preview');
-    wrapper.textContent = 'Upload ID';
+    wrapper.textContent = '';
   }
   startMenuRefs.overlay.appendChild(wrapper);
 }
