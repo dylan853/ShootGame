@@ -184,6 +184,7 @@ const startMenuState = {
   loading: false,
   register: getDefaultRegisterForm(),
   login: getDefaultLoginForm(),
+  verificationToken: null,
   username: {
     value: '',
     token: null
@@ -246,9 +247,9 @@ function wireEvents() {
 
 function hydrateUser() {
   state.user = null;
-  try {
+    try {
     localStorage.removeItem(storageKey);
-  } catch (err) {
+    } catch (err) {
     // ignore
   }
 }
@@ -361,7 +362,18 @@ function renderStartMenuScreen() {
 
 function renderStartMenuOverlays(screenName, width, height) {
   if (!startMenuRefs.overlay) return;
+  // Only clear and rebuild if screen changed, overlay is empty, or loading state changed
+  const lastLoadingState = startMenuRefs.overlay.dataset.wasLoading === 'true';
+  const currentLoadingState = startMenuState.loading;
+  const needsRebuild = !startMenuRefs.overlay.dataset.currentScreen || 
+                        startMenuRefs.overlay.dataset.currentScreen !== screenName ||
+                        startMenuRefs.overlay.children.length === 0 ||
+                        lastLoadingState !== currentLoadingState;
+  if (!needsRebuild) return;
+  
   startMenuRefs.overlay.innerHTML = '';
+  startMenuRefs.overlay.dataset.currentScreen = screenName;
+  startMenuRefs.overlay.dataset.wasLoading = String(startMenuState.loading);
   switch (screenName) {
     case 'landing':
       addMenuHotspot([33, 468, 98, 498], openStartMenuRulesModal, { width, height });
@@ -380,7 +392,8 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuInput('register.phone', [168, 304, 379, 334], {
         width,
         height,
-        placeholder: '+441234567890'
+        placeholder: '+441234567890',
+        phoneField: true
       });
       addMenuInput('register.country', [168, 346, 379, 376], { width, height, placeholder: 'Country' });
       addMenuInput('register.password', [169, 387, 379, 417], {
@@ -397,7 +410,12 @@ function renderStartMenuOverlays(screenName, width, height) {
       });
       break;
     case 'checkEmail':
-      addMenuHotspot([0, 0, width, height], () => setStartMenuScreen('landing'), { width, height });
+      // Until email delivery is live, proceed directly to username screen on click
+      addMenuHotspot(
+        [0, 0, width, height],
+        () => setStartMenuScreen('username', { force: true }),
+        { width, height }
+      );
       break;
     case 'username':
       addMenuInput('username.value', [306, 188, 517, 218], {
@@ -409,7 +427,8 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuHotspot([364, 261, 453, 286], handleUsernameSubmit, {
         width,
         height,
-        disabled: !startMenuState.username.value || startMenuState.loading
+        // Keep clickable even if invalid; server will validate
+        disabled: false
       });
       break;
     case 'login':
@@ -423,7 +442,8 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuHotspot([363, 346, 456, 376], handleLoginSubmit, {
         width,
         height,
-        disabled: !isLoginFormComplete() || startMenuState.loading
+        // Keep clickable even if invalid; server will validate
+        disabled: false
       });
       break;
     case 'authed':
@@ -442,12 +462,14 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuHotspot([330, 232, 404, 260], handleMenuCreateTable, {
         width,
         height,
-        disabled: startMenuState.loading
+        // Keep clickable regardless of loading/state
+        disabled: false
       });
       addMenuHotspot([440, 233, 492, 260], handleMenuJoinTable, {
         width,
         height,
-        disabled: !isJoinCodeValid() || startMenuState.loading
+        // Keep clickable even if code invalid; server will validate
+        disabled: false
       });
       break;
     default:
@@ -466,6 +488,8 @@ function addMenuHotspot(rect, handler, options = {}) {
     event.stopPropagation();
     handler();
   });
+  btn.style.pointerEvents = 'auto';
+  btn.style.zIndex = '10';
   startMenuRefs.overlay.appendChild(btn);
 }
 
@@ -474,24 +498,81 @@ function addMenuInput(path, rect, options = {}) {
   const input = document.createElement('input');
   input.type = options.type || 'text';
   input.placeholder = options.placeholder || '';
-  input.maxLength = options.maxLength || undefined;
+  if (options.maxLength && options.maxLength > 0) {
+    input.maxLength = options.maxLength;
+  }
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.readOnly = false;
+  input.disabled = false;
+  input.tabIndex = 0;
   if (options.type === 'date' && options.max) {
     input.max = options.max;
   }
-  input.value = getMenuFieldValue(path);
+  input.value = getMenuFieldValue(path) || (options.phoneField ? '+' : '');
   if (options.transform === 'uppercase') {
     input.style.textTransform = 'uppercase';
   }
   applyMenuRect(input, rect, options.width, options.height);
   input.className = 'start-menu-input';
+  
+  // Force interactive styles inline to override any CSS issues
+  input.style.pointerEvents = 'auto';
+  input.style.userSelect = 'text';
+  input.style.webkitUserSelect = 'text';
+  input.style.zIndex = '10';
+  
+  // Multiple event listeners to ensure input works
   input.addEventListener('input', (event) => {
     let value = event.target.value;
+    
+    if (options.phoneField) {
+      // Ensure phone always starts with +
+      if (!value.startsWith('+')) {
+        value = '+' + value.replace(/^\+*/, '');
+      }
+      // Only allow +, digits, spaces, and dashes
+      value = value.replace(/[^\d\s+\-]/g, '');
+      event.target.value = value;
+    }
+    
     if (options.transform === 'uppercase') {
       value = value.toUpperCase();
       event.target.value = value;
     }
     setMenuFieldValue(path, value);
   });
+  
+  input.addEventListener('change', (event) => {
+    let value = event.target.value;
+    
+    if (options.phoneField) {
+      if (!value.startsWith('+')) {
+        value = '+' + value.replace(/^\+*/, '');
+      }
+      value = value.replace(/[^\d\s+\-]/g, '');
+      event.target.value = value;
+    }
+    
+    if (options.transform === 'uppercase') {
+      value = value.toUpperCase();
+      event.target.value = value;
+    }
+    setMenuFieldValue(path, value);
+  });
+  
+  input.addEventListener('click', (event) => {
+    event.stopPropagation();
+    input.focus();
+    
+    // Position cursor after + for phone fields if empty
+    if (options.phoneField && event.target.value === '+') {
+      setTimeout(() => {
+        event.target.setSelectionRange(1, 1);
+      }, 0);
+    }
+  });
+  
   startMenuRefs.overlay.appendChild(input);
 }
 
@@ -499,15 +580,34 @@ function addMenuFileField(rect, options = {}) {
   if (!startMenuRefs.overlay) return;
   const wrapper = document.createElement('label');
   wrapper.className = 'start-menu-file-field';
+  wrapper.htmlFor = 'register-identity-file';
   applyMenuRect(wrapper, rect, options.width, options.height);
+  wrapper.style.pointerEvents = 'auto';
+  wrapper.style.zIndex = '10';
+  wrapper.style.cursor = 'pointer';
+  
   const input = document.createElement('input');
+  input.id = 'register-identity-file';
   input.type = 'file';
   input.accept = 'image/*';
+  input.style.pointerEvents = 'auto';
+  
   input.addEventListener('change', (event) => {
     const file = event.target.files && event.target.files[0];
     setRegisterIdentityFile(file);
   });
+  
+  input.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  
+  wrapper.addEventListener('click', (event) => {
+    event.stopPropagation();
+    input.click();
+  });
+  
   wrapper.appendChild(input);
+  
   if (startMenuState.register.identityPreviewUrl) {
     wrapper.style.setProperty('--preview-image', `url(${startMenuState.register.identityPreviewUrl})`);
     wrapper.classList.add('has-preview');
@@ -561,6 +661,10 @@ function setRegisterIdentityFile(file) {
   if (file) {
     startMenuState.register.identityPreviewUrl = URL.createObjectURL(file);
   }
+  // Force rebuild to update file preview
+  if (startMenuRefs.overlay) {
+    delete startMenuRefs.overlay.dataset.currentScreen;
+  }
   renderStartMenuScreen();
 }
 
@@ -570,7 +674,7 @@ function isRegisterFormComplete() {
     form.fullName &&
       form.dateOfBirth &&
       form.email &&
-      form.phone &&
+      form.phone && form.phone.length > 1 && // More than just '+'
       form.country &&
       form.password &&
       form.identityFile
@@ -607,20 +711,39 @@ async function handleRegisterSubmit() {
     formData.append('phone', startMenuState.register.phone.trim());
     formData.append('country', startMenuState.register.country.trim());
     formData.append('password', startMenuState.register.password);
-    formData.append('identityImage', startMenuState.register.identityFile);
+    if (startMenuState.register.identityFile) {
+      formData.append('identityImage', startMenuState.register.identityFile);
+    }
+    
+    console.log('Submitting registration:', {
+      fullName: startMenuState.register.fullName,
+      dateOfBirth: startMenuState.register.dateOfBirth,
+      email: startMenuState.register.email,
+      phone: startMenuState.register.phone,
+      country: startMenuState.register.country,
+      hasIdentityFile: !!startMenuState.register.identityFile
+    });
+    
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       body: formData
     });
     const payload = await res.json();
+    console.log('Server response:', payload);
     if (!res.ok) {
       throw new Error(payload.message || 'Unable to register.');
+    }
+    // Store verification token so we can proceed to username without email
+    if (payload.verificationToken) {
+      startMenuState.username.token = payload.verificationToken;
+      startMenuState.verificationToken = payload.verificationToken;
     }
     toast('Registration saved. Please check your email.');
     cleanupStartMenuScreen('register');
     startMenuState.register = getDefaultRegisterForm();
     setStartMenuScreen('checkEmail', { force: true });
   } catch (err) {
+    console.error('Registration error:', err);
     toast(err.message || 'Registration failed.');
   } finally {
     startMenuState.loading = false;
@@ -629,7 +752,12 @@ async function handleRegisterSubmit() {
 }
 
 async function handleUsernameSubmit() {
-  if (!startMenuState.username.token || !startMenuState.username.value || startMenuState.loading) {
+  // Allow click regardless; use any stored token
+  const token =
+    startMenuState.username.token ||
+    startMenuState.verificationToken;
+
+  if (!startMenuState.username.value || startMenuState.loading) {
     return;
   }
   startMenuState.loading = true;
@@ -641,7 +769,7 @@ async function handleUsernameSubmit() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        token: startMenuState.username.token,
+        token,
         username: startMenuState.username.value.trim()
       })
     });
@@ -695,14 +823,14 @@ async function handleLoginSubmit() {
 
 function setLoggedInUser(user) {
   if (!user) return;
-  state.user = {
+    state.user = {
     userId: user.userId,
     username: user.username,
     balance: user.balance,
     balanceDisplay: user.balanceDisplay
-  };
-  registerWithSocket();
-  render();
+    };
+    registerWithSocket();
+    render();
 }
 
 function handleMenuLogout() {

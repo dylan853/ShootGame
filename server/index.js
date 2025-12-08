@@ -50,14 +50,15 @@ app.get('/api/health', (req, res) => {
 
 app.post('/api/auth/register', upload.single('identityImage'), async (req, res) => {
   try {
-    const user = await registerUser(req.body || {}, req.file);
+    const { user, verificationToken } = await registerUser(req.body || {}, req.file);
     res.json({
       status: 'pending',
       message: 'Registration received. Please check your email to continue.',
       user: {
         email: user.email,
         balanceDisplay: user.balanceDisplay
-      }
+      },
+      verificationToken
     });
   } catch (err) {
     if (req.file) {

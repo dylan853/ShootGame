@@ -102,6 +102,8 @@ body::before {
 }
 
 .start-menu-canvas img {
+  position: relative;
+  z-index: 0;
   display: block;
   width: 100%;
   height: auto;
@@ -111,22 +113,26 @@ body::before {
   position: absolute;
   inset: 0;
   pointer-events: auto;
-}
-
-.start-menu-overlay-layer > * {
-  pointer-events: auto;
+  z-index: 1;
 }
 
 .start-menu-input {
-  position: absolute;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  color: #000;
-  font-family: 'Western', 'Segoe UI', sans-serif;
-  font-size: clamp(0.75rem, 1.5vw, 1rem);
-  padding: 0;
-  outline: none;
+  position: absolute !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #000 !important;
+  font-family: 'Western', 'Segoe UI', sans-serif !important;
+  font-size: clamp(0.75rem, 1.5vw, 1rem) !important;
+  padding: 0.25rem !important;
+  outline: none !important;
+  pointer-events: auto !important;
+  z-index: 2 !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  flex: none !important;
 }
 
 .start-menu-input::placeholder {
@@ -138,6 +144,8 @@ body::before {
   border: none;
   background: transparent;
   cursor: pointer;
+  pointer-events: auto;
+  z-index: 2;
 }
 
 .start-menu-hotspot:disabled {
@@ -157,6 +165,8 @@ body::before {
   color: #000;
   text-transform: uppercase;
   cursor: pointer;
+  pointer-events: auto;
+  z-index: 2;
 }
 
 .start-menu-file-field.has-preview {
@@ -182,7 +192,8 @@ body::before {
   padding: 0.35rem 1rem;
   border-radius: 999px;
   cursor: pointer;
-  z-index: 2;
+  pointer-events: auto;
+  z-index: 3;
 }
 
 .start-menu-close.hidden {

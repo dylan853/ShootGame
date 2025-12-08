@@ -127,7 +127,10 @@ async function registerUser({
       <p><a href="${verifyLink}">${verifyLink}</a></p>
     `
   });
-  return sanitizeUser(user);
+  return {
+    user: sanitizeUser(user),
+    verificationToken
+  };
 }
 
 function requireTokenUser(token) {
