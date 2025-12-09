@@ -438,23 +438,33 @@ function maybeHandleDealerKing(io, game) {
     return true;
   }
   game.kingSkipInProgress = true;
-  const { collected, contributors, shortfalls } = collectMinimumBetFromPlayers(game);
-  const perPlayerDisplay = penniesToDisplay(MINIMUM_STAKE);
-  const collectedDisplay = penniesToDisplay(collected);
-  const shortfallNote = shortfalls.length
-    ? ` (${shortfalls.join(', ')} could not cover full amount)`
-    : '';
-  addMessage(
-    game,
-    `Dealer reveals a King. Minimum bet of ${perPlayerDisplay} taken from ${contributors} players. ${collectedDisplay} added to pot.${shortfallNote}`
-  );
-  emitState(io, game);
+  const isRedKing = ['hearts', 'diamonds'].includes((game.dealerCard.suit || '').toLowerCase());
+  let subtitle = 'Minimum bet taken from each player.';
+
+  if (isRedKing) {
+    subtitle = "It's red your lucky!";
+    addMessage(game, 'Dealer reveals a red King. No minimum bet taken.');
+    emitState(io, game);
+  } else {
+    const { collected, contributors, shortfalls } = collectMinimumBetFromPlayers(game);
+    const perPlayerDisplay = penniesToDisplay(MINIMUM_STAKE);
+    const collectedDisplay = penniesToDisplay(collected);
+    const shortfallNote = shortfalls.length
+      ? ` (${shortfalls.join(', ')} could not cover full amount)`
+      : '';
+    addMessage(
+      game,
+      `Dealer reveals a King. Minimum bet of ${perPlayerDisplay} taken from ${contributors} players. ${collectedDisplay} added to pot.${shortfallNote}`
+    );
+    emitState(io, game);
+  }
+
   const room = roomName(game.code);
   schedule(game, () => {
     if (!games.has(game.code)) return;
     io.to(room).emit('table-announcement', {
       title: 'Dealer got a king!',
-      subtitle: 'Minimum bet taken from each player.',
+      subtitle,
       duration: KING_ANNOUNCEMENT_DURATION
     });
   }, KING_ANNOUNCEMENT_DELAY);

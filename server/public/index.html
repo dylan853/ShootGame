@@ -6,8 +6,41 @@
       name="viewport"
       content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no"
     />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Shoot Poker - Multiplayer Card Table</title>
     <link rel="stylesheet" href="/styles.css" />
+    <script>
+      (function clearAllCaches() {
+        try {
+          // Clear web storage
+          try {
+            localStorage.clear();
+            sessionStorage.clear();
+          } catch (err) {
+            /* ignore */
+          }
+          // Unregister service workers and clear caches
+          (async () => {
+            try {
+              if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map((reg) => reg.unregister()));
+              }
+              if (typeof caches !== 'undefined' && caches.keys) {
+                const names = await caches.keys();
+                await Promise.all(names.map((name) => caches.delete(name)));
+              }
+            } catch (err) {
+              /* ignore */
+            }
+          })();
+        } catch (err) {
+          /* ignore */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="start-menu-root" class="start-menu-root">
@@ -19,8 +52,18 @@
         </div>
         <button type="button" class="start-menu-close hidden" id="start-menu-close-btn">Back</button>
         <div class="start-menu-modal hidden" id="start-menu-rules-modal">
-          <img src="/StartMenu/StartMenuRulesMenu.jpg" alt="Rules menu" />
+          <div class="start-menu-modal-inner">
+            <img id="start-menu-rules-image" src="/StartMenu/StartMenuRulesMenu.jpg" alt="Rules menu" />
+            <div class="start-menu-modal-overlay-layer" id="start-menu-rules-overlay"></div>
+          </div>
           <button type="button" id="start-menu-rules-close">Close</button>
+        </div>
+        <div class="start-menu-modal hidden" id="start-menu-compliance-modal">
+          <div class="start-menu-modal-inner">
+            <img id="start-menu-compliance-image" src="/StartMenu/compliancemenu.jpg" alt="Compliance menu" />
+            <div class="start-menu-modal-overlay-layer" id="start-menu-compliance-overlay"></div>
+          </div>
+          <button type="button" id="start-menu-compliance-close">Close</button>
         </div>
       </div>
     </div>

@@ -128,7 +128,9 @@ const refs = {
 
 const START_MENU_IMAGE_PATHS = {
   landing: '/StartMenu/StartMenuRulesRegisterLogin.jpg',
-  register: '/StartMenu/StartMenuRegisterMenu.jpg',
+  register1: '/StartMenu/StartMenuRegisterMenu1.jpg',
+  register2: '/StartMenu/StartMenuRegisterMenu2.jpg',
+  register3: '/StartMenu/StartMenuRegister3.jpg',
   checkEmail: '/StartMenu/StartMenuCheckEmail.jpg',
   username: '/StartMenu/StartMenuChooseUsername.jpg',
   login: '/StartMenu/StartMenuLogin.jpg',
@@ -136,8 +138,24 @@ const START_MENU_IMAGE_PATHS = {
   play: '/StartMenu/StartMenuCreateOrJoinTable.jpg'
 };
 
+const COMPLIANCE_DOWNLOADS = [
+  { rect: [37, 169, 125, 189], file: 'AML & CFT.pdf' },
+  { rect: [38, 212, 178, 233], file: 'Business Feasibility.pdf' },
+  { rect: [38, 256, 263, 274], file: 'Description Rules and Definitions.pdf' },
+  { rect: [38, 299, 154, 317], file: 'Gaming Policies.pdf' },
+  { rect: [37, 341, 121, 359], file: 'Jurisdiction.pdf' },
+  { rect: [38, 384, 235, 405], file: 'KYC & Responsible Gaming.pdf' },
+  { rect: [38, 427, 163, 449], file: 'Swot Analysis.pdf' },
+  { rect: [37, 469, 110, 489], file: 'Who Am I.pdf' }
+];
+
+const COMPLIANCE_CLOSE_RECT = [36, 804, 110, 837];
+const RULES_CLOSE_RECT = [922, 1170, 1028, 1220];
+
 const START_MENU_CLOSE_TARGETS = {
-  register: 'landing',
+  register1: 'landing',
+  register2: 'register1',
+  register3: 'register2',
   login: 'landing',
   username: 'landing',
   play: 'authed'
@@ -154,20 +172,42 @@ const startMenuRefs = {
   overlay: document.getElementById('start-menu-overlay-layer'),
   rulesModal: document.getElementById('start-menu-rules-modal'),
   rulesClose: document.getElementById('start-menu-rules-close'),
+  rulesImage: document.getElementById('start-menu-rules-image'),
+  rulesOverlay: document.getElementById('start-menu-rules-overlay'),
+  complianceModal: document.getElementById('start-menu-compliance-modal'),
+  complianceOverlay: document.getElementById('start-menu-compliance-overlay'),
+  complianceImage: document.getElementById('start-menu-compliance-image'),
+  complianceClose: document.getElementById('start-menu-compliance-close'),
   closeBtn: document.getElementById('start-menu-close-btn'),
   appShell: document.getElementById('app')
 };
 
 function getDefaultRegisterForm() {
   return {
-    fullName: '',
+    firstName: '',
+    secondName: '',
     dateOfBirth: '',
     email: '',
     phone: '+',
     country: '',
-    password: '',
+    houseNameOrNumber: '',
+    addressFirstLine: '',
+    addressSecondLine: '',
+    townOrCity: '',
+    county: '',
+    countryOfResidence: '',
+    maximumBet: '',
+    limitPerDay: '',
+    maximumLoss: '',
+    creditCardNumber: '',
+    expiryDate: '',
+    cvrNumber: '',
     identityFile: null,
-    identityPreviewUrl: ''
+    identityPreviewUrl: '',
+    billImageFile: null,
+    billImagePreviewUrl: '',
+    creditCardImageFile: null,
+    creditCardImagePreviewUrl: ''
   };
 }
 
@@ -236,6 +276,14 @@ function wireEvents() {
       closeStartMenuRulesModal();
     }
   });
+  startMenuRefs.rulesImage?.addEventListener('load', renderRulesOverlay);
+  startMenuRefs.complianceClose?.addEventListener('click', closeStartMenuComplianceModal);
+  startMenuRefs.complianceModal?.addEventListener('click', (event) => {
+    if (event.target === startMenuRefs.complianceModal) {
+      closeStartMenuComplianceModal();
+    }
+  });
+  startMenuRefs.complianceImage?.addEventListener('load', renderComplianceOverlay);
   startMenuRefs.closeBtn?.addEventListener('click', () => {
     const target =
       startMenuRefs.closeBtn?.getAttribute('data-target') ||
@@ -301,7 +349,8 @@ function setStartMenuScreen(screenName, options = {}) {
     renderStartMenuScreen();
     return;
   }
-  cleanupStartMenuScreen(startMenuState.currentScreen);
+  const previousScreen = startMenuState.currentScreen;
+  cleanupStartMenuScreen(previousScreen, screenName);
   startMenuState.currentScreen = screenName;
   if (startMenuRefs.root) {
     startMenuRefs.root.classList.remove('hidden');
@@ -311,11 +360,16 @@ function setStartMenuScreen(screenName, options = {}) {
   renderStartMenuScreen();
 }
 
-function cleanupStartMenuScreen(screenName) {
-  if (screenName === 'register') {
-    if (startMenuState.register.identityPreviewUrl) {
-      URL.revokeObjectURL(startMenuState.register.identityPreviewUrl);
-    }
+function cleanupStartMenuScreen(screenName, nextScreen) {
+  const leavingRegisterFlow =
+    ['register1', 'register2', 'register3'].includes(screenName) &&
+    !['register1', 'register2', 'register3'].includes(nextScreen);
+  if (leavingRegisterFlow) {
+    ['identityPreviewUrl', 'billImagePreviewUrl', 'creditCardImagePreviewUrl'].forEach((key) => {
+      if (startMenuState.register[key]) {
+        URL.revokeObjectURL(startMenuState.register[key]);
+      }
+    });
     startMenuState.register = getDefaultRegisterForm();
   } else if (screenName === 'login') {
     startMenuState.login = getDefaultLoginForm();
@@ -376,37 +430,68 @@ function renderStartMenuOverlays(screenName, width, height) {
   startMenuRefs.overlay.dataset.wasLoading = String(startMenuState.loading);
   switch (screenName) {
     case 'landing':
+      addMenuHotspot([9, 7, 52, 53], openStartMenuComplianceModal, { width, height });
       addMenuHotspot([33, 468, 98, 498], openStartMenuRulesModal, { width, height });
-      addMenuHotspot([106, 468, 205, 499], () => setStartMenuScreen('register'), { width, height });
+      addMenuHotspot([106, 468, 205, 499], () => setStartMenuScreen('register1'), { width, height });
       addMenuHotspot([691, 465, 776, 499], () => setStartMenuScreen('login'), { width, height });
       break;
-    case 'register':
-      addMenuInput('register.fullName', [168, 178, 378, 208], { width, height, placeholder: 'Full name' });
-      addMenuInput('register.dateOfBirth', [168, 221, 378, 251], {
+    case 'register1':
+      addMenuInput('register.secondName', [168, 178, 378, 208], { width, height, placeholder: 'Second name' });
+      addMenuInput('register.firstName', [168, 221, 378, 251], {
+        width,
+        height,
+        placeholder: 'First name'
+      });
+      addMenuInput('register.dateOfBirth', [168, 263, 378, 293], {
         width,
         height,
         type: 'date',
         max: new Date().toISOString().split('T')[0]
       });
-      addMenuInput('register.email', [168, 263, 378, 293], { width, height, type: 'email', placeholder: 'Email' });
-      addMenuInput('register.phone', [168, 304, 379, 334], {
+      addMenuInput('register.email', [168, 304, 379, 334], { width, height, type: 'email', placeholder: 'Email' });
+      addMenuInput('register.phone', [168, 346, 379, 376], {
         width,
         height,
         placeholder: '+441234567890',
         phoneField: true
       });
-      addMenuInput('register.country', [168, 346, 379, 376], { width, height, placeholder: 'Country' });
-      addMenuInput('register.password', [169, 387, 379, 417], {
+      addMenuInput('register.country', [169, 387, 379, 417], { width, height, placeholder: 'Country' });
+      addMenuFileField('identity', [398, 174, 757, 420], { width, height });
+      addMenuHotspot([45, 469, 110, 497], () => setStartMenuScreen('landing'), { width, height });
+      addMenuHotspot([700, 471, 764, 497], () => setStartMenuScreen('register2'), {
         width,
         height,
-        type: 'password',
-        placeholder: 'Password'
+        disabled: false
       });
-      addMenuFileField([398, 174, 757, 420], { width, height });
+      break;
+    case 'register2':
+      addMenuInput('register.houseNameOrNumber', [168, 178, 378, 208], { width, height, placeholder: 'House name/number' });
+      addMenuInput('register.addressFirstLine', [168, 221, 378, 251], { width, height, placeholder: 'Address line 1' });
+      addMenuInput('register.addressSecondLine', [168, 263, 378, 293], { width, height, placeholder: 'Address line 2' });
+      addMenuInput('register.townOrCity', [168, 304, 379, 334], { width, height, placeholder: 'Town/City' });
+      addMenuInput('register.county', [168, 346, 379, 376], { width, height, placeholder: 'County' });
+      addMenuInput('register.countryOfResidence', [169, 387, 379, 417], { width, height, placeholder: 'Country of residence' });
+      addMenuFileField('billImage', [398, 174, 757, 420], { width, height });
+      addMenuHotspot([45, 469, 110, 497], () => setStartMenuScreen('register1'), { width, height });
+      addMenuHotspot([700, 471, 764, 497], () => setStartMenuScreen('register3'), {
+        width,
+        height,
+        disabled: false
+      });
+      break;
+    case 'register3':
+      addMenuInput('register.maximumBet', [168, 178, 378, 208], { width, height, placeholder: 'Maximum bet' });
+      addMenuInput('register.limitPerDay', [168, 221, 378, 251], { width, height, placeholder: 'Limit per day' });
+      addMenuInput('register.maximumLoss', [168, 263, 378, 293], { width, height, placeholder: 'Maximum loss' });
+      addMenuInput('register.creditCardNumber', [168, 304, 379, 334], { width, height, placeholder: 'Credit card number' });
+      addMenuInput('register.expiryDate', [168, 346, 379, 376], { width, height, placeholder: 'Expiry date' });
+      addMenuInput('register.cvrNumber', [169, 387, 379, 417], { width, height, placeholder: 'CVR number' });
+      addMenuFileField('creditCardImage', [398, 174, 757, 420], { width, height });
+      addMenuHotspot([45, 469, 110, 497], () => setStartMenuScreen('register2'), { width, height });
       addMenuHotspot([700, 471, 764, 497], handleRegisterSubmit, {
         width,
         height,
-        disabled: !isRegisterFormComplete() || startMenuState.loading
+        disabled: false
       });
       break;
     case 'checkEmail':
@@ -436,9 +521,10 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuInput('login.password', [306, 256, 516, 286], {
         width,
         height,
-        type: 'password',
-        placeholder: 'Password'
+        placeholder: 'Phone number (+ code)',
+        phoneField: true
       });
+      addMenuHotspot([45, 469, 110, 497], () => setStartMenuScreen('landing'), { width, height });
       addMenuHotspot([363, 346, 456, 376], handleLoginSubmit, {
         width,
         height,
@@ -447,6 +533,7 @@ function renderStartMenuOverlays(screenName, width, height) {
       });
       break;
     case 'authed':
+      addMenuHotspot([9, 7, 52, 53], openStartMenuComplianceModal, { width, height });
       addMenuHotspot([30, 461, 98, 497], openStartMenuRulesModal, { width, height });
       addMenuHotspot([108, 467, 163, 499], () => setStartMenuScreen('play'), { width, height });
       addMenuHotspot([693, 465, 791, 499], handleMenuLogout, { width, height });
@@ -576,25 +663,25 @@ function addMenuInput(path, rect, options = {}) {
   startMenuRefs.overlay.appendChild(input);
 }
 
-function addMenuFileField(rect, options = {}) {
+function addMenuFileField(key, rect, options = {}) {
   if (!startMenuRefs.overlay) return;
   const wrapper = document.createElement('label');
   wrapper.className = 'start-menu-file-field';
-  wrapper.htmlFor = 'register-identity-file';
+  wrapper.htmlFor = `register-${key}-file`;
   applyMenuRect(wrapper, rect, options.width, options.height);
   wrapper.style.pointerEvents = 'auto';
   wrapper.style.zIndex = '10';
   wrapper.style.cursor = 'pointer';
   
   const input = document.createElement('input');
-  input.id = 'register-identity-file';
+  input.id = `register-${key}-file`;
   input.type = 'file';
   input.accept = 'image/*';
   input.style.pointerEvents = 'auto';
   
   input.addEventListener('change', (event) => {
     const file = event.target.files && event.target.files[0];
-    setRegisterIdentityFile(file);
+    setRegisterFile(key, file);
   });
   
   input.addEventListener('click', (event) => {
@@ -608,8 +695,9 @@ function addMenuFileField(rect, options = {}) {
   
   wrapper.appendChild(input);
   
-  if (startMenuState.register.identityPreviewUrl) {
-    wrapper.style.setProperty('--preview-image', `url(${startMenuState.register.identityPreviewUrl})`);
+  const previewKey = `${key}PreviewUrl`;
+  if (startMenuState.register[previewKey]) {
+    wrapper.style.setProperty('--preview-image', `url(${startMenuState.register[previewKey]})`);
     wrapper.classList.add('has-preview');
     wrapper.textContent = '';
   } else {
@@ -652,14 +740,16 @@ function setMenuFieldValue(path, value) {
   startMenuState[group][key] = value;
 }
 
-function setRegisterIdentityFile(file) {
-  if (startMenuState.register.identityPreviewUrl) {
-    URL.revokeObjectURL(startMenuState.register.identityPreviewUrl);
-    startMenuState.register.identityPreviewUrl = '';
+function setRegisterFile(key, file) {
+  const previewKey = `${key}PreviewUrl`;
+  const fileKey = `${key}File`;
+  if (startMenuState.register[previewKey]) {
+    URL.revokeObjectURL(startMenuState.register[previewKey]);
+    startMenuState.register[previewKey] = '';
   }
-  startMenuState.register.identityFile = file || null;
+  startMenuState.register[fileKey] = file || null;
   if (file) {
-    startMenuState.register.identityPreviewUrl = URL.createObjectURL(file);
+    startMenuState.register[previewKey] = URL.createObjectURL(file);
   }
   // Force rebuild to update file preview
   if (startMenuRefs.overlay) {
@@ -670,15 +760,31 @@ function setRegisterIdentityFile(file) {
 
 function isRegisterFormComplete() {
   const form = startMenuState.register;
-  return Boolean(
-    form.fullName &&
-      form.dateOfBirth &&
-      form.email &&
-      form.phone && form.phone.length > 1 && // More than just '+'
-      form.country &&
-      form.password &&
-      form.identityFile
-  );
+  const requiredStrings = [
+    form.firstName,
+    form.secondName,
+    form.dateOfBirth,
+    form.email,
+    form.phone && form.phone.length > 1 ? form.phone : '',
+    form.country,
+    form.houseNameOrNumber,
+    form.addressFirstLine,
+    form.addressSecondLine,
+    form.townOrCity,
+    form.county,
+    form.countryOfResidence,
+    form.maximumBet,
+    form.limitPerDay,
+    form.maximumLoss,
+    form.creditCardNumber,
+    form.expiryDate,
+    form.cvrNumber
+  ];
+  const filesPresent =
+    !!form.identityFile &&
+    !!form.billImageFile &&
+    !!form.creditCardImageFile;
+  return requiredStrings.every(Boolean) && filesPresent;
 }
 
 function isLoginFormComplete() {
@@ -690,40 +796,127 @@ function isJoinCodeValid() {
 }
 
 function openStartMenuRulesModal() {
+  renderRulesOverlay();
+  startMenuRefs.root?.classList.add('start-menu-rules-open');
   startMenuRefs.rulesModal?.classList.remove('hidden');
 }
 
 function closeStartMenuRulesModal() {
+  startMenuRefs.root?.classList.remove('start-menu-rules-open');
   startMenuRefs.rulesModal?.classList.add('hidden');
 }
 
+function openStartMenuComplianceModal() {
+  renderComplianceOverlay();
+  startMenuRefs.root?.classList.add('start-menu-compliance-open');
+  startMenuRefs.complianceModal?.classList.remove('hidden');
+}
+
+function closeStartMenuComplianceModal() {
+  startMenuRefs.root?.classList.remove('start-menu-compliance-open');
+  startMenuRefs.complianceModal?.classList.add('hidden');
+}
+
+function renderRulesOverlay() {
+  const overlay = startMenuRefs.rulesOverlay;
+  const img = startMenuRefs.rulesImage;
+  if (!overlay || !img) return;
+  const baseWidth = img.naturalWidth || MENU_COORDINATE_BASE.width;
+  const baseHeight = img.naturalHeight || MENU_COORDINATE_BASE.height;
+  overlay.innerHTML = '';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'start-menu-hotspot';
+  closeBtn.setAttribute('aria-label', 'Close rules');
+  applyMenuRect(closeBtn, RULES_CLOSE_RECT, baseWidth, baseHeight);
+  closeBtn.addEventListener('click', closeStartMenuRulesModal);
+  overlay.appendChild(closeBtn);
+}
+
+function renderComplianceOverlay() {
+  const overlay = startMenuRefs.complianceOverlay;
+  const img = startMenuRefs.complianceImage;
+  if (!overlay || !img) return;
+
+  const baseWidth = img.naturalWidth || MENU_COORDINATE_BASE.width;
+  const baseHeight = img.naturalHeight || MENU_COORDINATE_BASE.height;
+
+  overlay.innerHTML = '';
+
+  COMPLIANCE_DOWNLOADS.forEach((item) => {
+    const link = document.createElement('a');
+    link.className = 'start-menu-hotspot';
+    link.href = `/compliancepdfs/${encodeURIComponent(item.file)}`;
+    link.download = item.file;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.setAttribute('aria-label', `Download ${item.file}`);
+    applyMenuRect(link, item.rect, baseWidth, baseHeight);
+    overlay.appendChild(link);
+  });
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'start-menu-hotspot';
+  closeBtn.setAttribute('aria-label', 'Close compliance menu');
+  applyMenuRect(closeBtn, COMPLIANCE_CLOSE_RECT, baseWidth, baseHeight);
+  closeBtn.addEventListener('click', closeStartMenuComplianceModal);
+  overlay.appendChild(closeBtn);
+}
+
 async function handleRegisterSubmit() {
-  if (!isRegisterFormComplete() || startMenuState.loading) {
+  if (startMenuState.loading) {
+    return;
+  }
+  if (!isRegisterFormComplete()) {
+    toast('Please complete all registration fields.');
     return;
   }
   startMenuState.loading = true;
   renderStartMenuScreen();
   try {
+    const form = startMenuState.register;
     const formData = new FormData();
-    formData.append('fullName', startMenuState.register.fullName.trim());
-    formData.append('dateOfBirth', startMenuState.register.dateOfBirth);
-    formData.append('email', startMenuState.register.email.trim());
-    formData.append('phone', startMenuState.register.phone.trim());
-    formData.append('country', startMenuState.register.country.trim());
-    formData.append('password', startMenuState.register.password);
-    if (startMenuState.register.identityFile) {
-      formData.append('identityImage', startMenuState.register.identityFile);
+    formData.append('firstName', form.firstName.trim());
+    formData.append('secondName', form.secondName.trim());
+    formData.append('dateOfBirth', form.dateOfBirth);
+    formData.append('email', form.email.trim());
+    formData.append('phone', form.phone.trim());
+    formData.append('country', form.country.trim());
+    formData.append('houseNameOrNumber', form.houseNameOrNumber.trim());
+    formData.append('addressFirstLine', form.addressFirstLine.trim());
+    formData.append('addressSecondLine', form.addressSecondLine.trim());
+    formData.append('townOrCity', form.townOrCity.trim());
+    formData.append('county', form.county.trim());
+    formData.append('countryOfResidence', form.countryOfResidence.trim());
+    formData.append('maximumBet', form.maximumBet.trim());
+    formData.append('limitPerDay', form.limitPerDay.trim());
+    formData.append('maximumLoss', form.maximumLoss.trim());
+    formData.append('creditCardNumber', form.creditCardNumber.trim());
+    formData.append('expiryDate', form.expiryDate.trim());
+    formData.append('cvrNumber', form.cvrNumber.trim());
+    if (form.identityFile) {
+      formData.append('identityImage', form.identityFile);
     }
-    
-    console.log('Submitting registration:', {
-      fullName: startMenuState.register.fullName,
-      dateOfBirth: startMenuState.register.dateOfBirth,
-      email: startMenuState.register.email,
-      phone: startMenuState.register.phone,
-      country: startMenuState.register.country,
-      hasIdentityFile: !!startMenuState.register.identityFile
+    if (form.billImageFile) {
+      formData.append('billImage', form.billImageFile);
+    }
+    if (form.creditCardImageFile) {
+      formData.append('creditCardImage', form.creditCardImageFile);
+    }
+
+    console.log('Submitting registration (3-step)', {
+      firstName: form.firstName,
+      secondName: form.secondName,
+      dateOfBirth: form.dateOfBirth,
+      email: form.email,
+      phone: form.phone,
+      country: form.country,
+      hasIdentityFile: !!form.identityFile,
+      hasBillImage: !!form.billImageFile,
+      hasCreditCardImage: !!form.creditCardImageFile
     });
-    
+
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       body: formData
@@ -739,7 +932,6 @@ async function handleRegisterSubmit() {
       startMenuState.verificationToken = payload.verificationToken;
     }
     toast('Registration saved. Please check your email.');
-    cleanupStartMenuScreen('register');
     startMenuState.register = getDefaultRegisterForm();
     setStartMenuScreen('checkEmail', { force: true });
   } catch (err) {

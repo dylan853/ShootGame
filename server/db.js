@@ -19,12 +19,15 @@ function createModernUsersTable() {
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE COLLATE NOCASE,
       full_name TEXT,
+      first_name TEXT,
+      second_name TEXT,
       date_of_birth TEXT,
       email TEXT UNIQUE COLLATE NOCASE,
       phone TEXT,
       country TEXT,
       password_hash TEXT,
       identity_image_path TEXT,
+      extra_data TEXT,
       email_verified INTEGER NOT NULL DEFAULT 0,
       verification_token TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
@@ -67,11 +70,14 @@ function ensureUserTable() {
     }
   };
   ensureColumn('full_name', 'full_name TEXT');
+  ensureColumn('first_name', 'first_name TEXT');
+  ensureColumn('second_name', 'second_name TEXT');
   ensureColumn('date_of_birth', 'date_of_birth TEXT');
   ensureColumn('phone', 'phone TEXT');
   ensureColumn('country', 'country TEXT');
   ensureColumn('password_hash', 'password_hash TEXT');
   ensureColumn('identity_image_path', 'identity_image_path TEXT');
+  ensureColumn('extra_data', 'extra_data TEXT');
   ensureColumn('email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0');
   ensureColumn('verification_token', 'verification_token TEXT');
   ensureColumn('status', "status TEXT NOT NULL DEFAULT 'pending'");
@@ -89,12 +95,15 @@ const insertUserStmt = db.prepare(`
     id,
     username,
     full_name,
+    first_name,
+    second_name,
     date_of_birth,
     email,
     phone,
     country,
     password_hash,
     identity_image_path,
+    extra_data,
     email_verified,
     verification_token,
     status,
@@ -103,12 +112,15 @@ const insertUserStmt = db.prepare(`
     @id,
     @username,
     @fullName,
+    @firstName,
+    @secondName,
     @dateOfBirth,
     @email,
     @phone,
     @country,
     @passwordHash,
     @identityImagePath,
+    @extraData,
     @emailVerified,
     @verificationToken,
     @status,
@@ -133,24 +145,30 @@ function mapUser(row) {
 
 function createPendingUser({
   fullName,
+  firstName,
+  secondName,
   dateOfBirth,
   email,
   phone,
   country,
   passwordHash,
   identityImagePath,
+  extraData,
   verificationToken
 }) {
   const user = {
     id: uuidv4(),
     username: null,
     fullName,
+    firstName,
+    secondName,
     dateOfBirth,
     email,
     phone,
     country,
     passwordHash,
     identityImagePath,
+    extraData,
     emailVerified: 0,
     verificationToken,
     status: 'pending',

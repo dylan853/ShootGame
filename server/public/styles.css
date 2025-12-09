@@ -51,6 +51,12 @@ body::before {
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'Arial Narrow';
+  src: url('/StartMenu/arialnarrow.ttf') format('truetype');
+  font-display: swap;
+}
+
 .hidden {
   display: none !important;
 }
@@ -122,8 +128,8 @@ body::before {
   border-radius: 0 !important;
   background: transparent !important;
   color: #000 !important;
-  font-family: 'Western', 'Segoe UI', sans-serif !important;
-  font-size: clamp(0.75rem, 1.5vw, 1rem) !important;
+  font-family: 'Arial Narrow', 'Segoe UI', sans-serif !important;
+  font-size: clamp(1rem, 2.2vw, 1.5rem) !important;
   padding: 0.25rem !important;
   outline: none !important;
   pointer-events: auto !important;
@@ -218,6 +224,79 @@ body::before {
   width: min(90vw, 720px);
   border-radius: 18px;
   box-shadow: 0 28px 60px rgba(0, 0, 0, 0.65);
+}
+
+#start-menu-compliance-modal img {
+  width: min(45vw, 360px);
+}
+
+#start-menu-compliance-modal {
+  justify-content: flex-start;
+  padding-left: 0vw;
+  z-index: 4;
+}
+
+.start-menu-rules-open #start-menu-overlay-layer,
+.start-menu-rules-open #start-menu-image,
+.start-menu-rules-open .start-menu-close {
+  pointer-events: none !important;
+}
+
+.start-menu-rules-open #start-menu-rules-modal {
+  pointer-events: auto;
+}
+
+#start-menu-rules-close {
+  display: none;
+}
+
+.start-menu-rules-open .start-menu-layer > * {
+  pointer-events: none !important;
+}
+
+.start-menu-rules-open #start-menu-rules-modal {
+  pointer-events: auto;
+}
+
+.start-menu-compliance-open .start-menu-layer > * {
+  pointer-events: none !important;
+}
+
+.start-menu-compliance-open #start-menu-compliance-modal {
+  pointer-events: auto;
+}
+
+#start-menu-compliance-close {
+  display: none;
+}
+
+#start-menu-close-btn {
+  display: none !important;
+}
+
+.start-menu-compliance-open #start-menu-overlay-layer,
+.start-menu-compliance-open #start-menu-image,
+.start-menu-compliance-open .start-menu-close {
+  pointer-events: none !important;
+}
+
+.start-menu-compliance-open #start-menu-compliance-modal {
+  pointer-events: auto;
+}
+
+.start-menu-modal-inner {
+  position: relative;
+  display: inline-block;
+}
+
+.start-menu-modal-overlay-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.start-menu-modal-overlay-layer .start-menu-hotspot {
+  pointer-events: auto;
 }
 
 .start-menu-modal button {

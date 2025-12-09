@@ -48,9 +48,16 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
 
-app.post('/api/auth/register', upload.single('identityImage'), async (req, res) => {
+app.post(
+  '/api/auth/register',
+  upload.fields([
+    { name: 'identityImage', maxCount: 1 },
+    { name: 'billImage', maxCount: 1 },
+    { name: 'creditCardImage', maxCount: 1 }
+  ]),
+  async (req, res) => {
   try {
-    const { user, verificationToken } = await registerUser(req.body || {}, req.file);
+    const { user, verificationToken } = await registerUser(req.body || {}, req.files || {});
     res.json({
       status: 'pending',
       message: 'Registration received. Please check your email to continue.',
@@ -61,12 +68,14 @@ app.post('/api/auth/register', upload.single('identityImage'), async (req, res) 
       verificationToken
     });
   } catch (err) {
-    if (req.file) {
-      fs.rm(req.file.path, { force: true }, () => {});
-    }
+    ['identityImage', 'billImage', 'creditCardImage'].forEach((field) => {
+      const fileArr = (req.files && req.files[field]) || [];
+      fileArr.forEach((f) => fs.rm(f.path, { force: true }, () => {}));
+    });
     res.status(err.statusCode || 400).json({ message: err.message || 'Registration failed' });
   }
-});
+  }
+);
 
 app.get('/api/auth/verify', (req, res) => {
   try {
@@ -121,9 +130,31 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Apply no-cache headers globally to ensure fresh loads
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 const publicDir = path.join(__dirname, 'public');
-app.use(express.static(publicDir));
+app.use(
+  express.static(publicDir, {
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+    }
+  })
+);
 app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
@@ -277,3 +308,4 @@ io.on('connection', (socket) => {
 server.listen(PORT, HOST, () => {
   console.log(`Shoot Game server running on http://${HOST}:${PORT}`);
 });
+
