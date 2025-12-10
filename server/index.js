@@ -24,6 +24,7 @@ const {
   createGame,
   joinGame,
   toggleReady,
+  dealerRevealWithMinimum,
   setDealerStake,
   handleStake,
   handleBet,
@@ -249,6 +250,14 @@ io.on('connection', (socket) => {
     safeAction(socket, async ({ amount }) => {
       ensureSocketUser(socket);
       setDealerStake(io, socket.id, amount);
+    })
+  );
+
+  socket.on(
+    'dealer-reveal-minimum',
+    safeAction(socket, async () => {
+      ensureSocketUser(socket);
+      dealerRevealWithMinimum(io, socket.id);
     })
   );
 

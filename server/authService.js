@@ -20,7 +20,7 @@ fs.mkdirSync(identityDir, { recursive: true });
 fs.mkdirSync(billDir, { recursive: true });
 fs.mkdirSync(creditCardDir, { recursive: true });
 
-const APP_URL = process.env.APP_URL || process.env.CLIENT_ORIGIN || '';
+const APP_URL = process.env.APP_URL || process.env.CLIENT_ORIGIN || 'https://shoot.poker';
 const PUBLIC_BASE_URL = APP_URL || '';
 
 function sanitizeUser(user) {
@@ -66,6 +66,20 @@ function validateRegistrationPayload(payload) {
       throw validationError(`Missing field: ${field}`);
     }
   });
+  const dobString = payload.dateOfBirth;
+  const dob = dobString ? new Date(dobString) : null;
+  if (!dob || Number.isNaN(dob.getTime())) {
+    throw validationError('Date of birth is invalid.');
+  }
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  if (age < 18) {
+    throw validationError('You must be 18 or older to register.');
+  }
   const fullName = `${payload.firstName} ${payload.secondName}`.trim();
   if (!/^[\p{L}\p{M}'\s.-]{2,}$/u.test(fullName)) {
     throw validationError('Name looks invalid.');
@@ -75,6 +89,9 @@ function validateRegistrationPayload(payload) {
   }
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email.trim())) {
     throw validationError('Email address is invalid.');
+  }
+  if (!/^\d{3}$/.test(String(payload.cvrNumber || '').trim())) {
+    throw validationError('CVR number must be exactly 3 digits.');
   }
   return fullName;
 }
@@ -142,31 +159,40 @@ async function registerUser(payload = {}, files = {}) {
   const billImage = Array.isArray(files.billImage) ? files.billImage[0] : null;
   const creditCardImage = Array.isArray(files.creditCardImage) ? files.creditCardImage[0] : null;
 
-  if (!identityFile) {
-    throw validationError('Identity image is required.');
-  }
-  if (!billImage) {
-    throw validationError('Bill image is required.');
-  }
-  if (!creditCardImage) {
-    throw validationError('Credit card image is required.');
-  }
-
   const hashedPassword = await bcrypt.hash((phone || '').trim(), 10);
   const verificationToken = uuidv4();
-  const storedFilename = `${verificationToken}${path.extname(identityFile.originalname || identityFile.filename || '.jpg')}`;
-  const storedPath = path.join(identityDir, storedFilename);
-  fs.renameSync(identityFile.path, storedPath);
+  let storedPath = null;
+  let billPath = null;
+  let ccPath = null;
 
-  const billFilename = `${verificationToken}-bill${path.extname(billImage.originalname || billImage.filename || '.jpg')}`;
-  const billPath = path.join(billDir, billFilename);
-  fs.renameSync(billImage.path, billPath);
+  if (identityFile) {
+    const storedFilename = `${verificationToken}${path.extname(identityFile.originalname || identityFile.filename || '.jpg')}`;
+    storedPath = path.join(identityDir, storedFilename);
+    fs.renameSync(identityFile.path, storedPath);
+  }
 
-  const ccFilename = `${verificationToken}-cc${path.extname(creditCardImage.originalname || creditCardImage.filename || '.jpg')}`;
-  const ccPath = path.join(creditCardDir, ccFilename);
-  fs.renameSync(creditCardImage.path, ccPath);
+  if (billImage) {
+    const billFilename = `${verificationToken}-bill${path.extname(billImage.originalname || billImage.filename || '.jpg')}`;
+    billPath = path.join(billDir, billFilename);
+    fs.renameSync(billImage.path, billPath);
+  }
 
-  const extraData = {
+  if (creditCardImage) {
+    const ccFilename = `${verificationToken}-cc${path.extname(creditCardImage.originalname || creditCardImage.filename || '.jpg')}`;
+    ccPath = path.join(creditCardDir, ccFilename);
+    fs.renameSync(creditCardImage.path, ccPath);
+  }
+
+  const user = createPendingUser({
+    fullName: fullName.trim(),
+    firstName: (firstName || '').trim(),
+    secondName: (secondName || '').trim(),
+    dateOfBirth,
+    email: normalizedEmail,
+    phone: phone.trim(),
+    country: country.trim(),
+    passwordHash: hashedPassword,
+    identityImagePath: storedPath,
     houseNameOrNumber,
     addressFirstLine,
     addressSecondLine,
@@ -180,20 +206,8 @@ async function registerUser(payload = {}, files = {}) {
     expiryDate,
     cvrNumber,
     billImagePath: billPath,
-    creditCardImagePath: ccPath
-  };
-
-  const user = createPendingUser({
-    fullName: fullName.trim(),
-    firstName: (firstName || '').trim(),
-    secondName: (secondName || '').trim(),
-    dateOfBirth,
-    email: normalizedEmail,
-    phone: phone.trim(),
-    country: country.trim(),
-    passwordHash: hashedPassword,
-    identityImagePath: storedPath,
-    extraData: JSON.stringify(extraData),
+    creditCardImagePath: ccPath,
+    extraData: null,
     verificationToken
   });
 
@@ -201,10 +215,23 @@ async function registerUser(payload = {}, files = {}) {
   await sendSystemEmail({
     to: normalizedEmail,
     subject: 'Verify your Shoot Poker account',
-    text: `Welcome to Shoot Poker!\n\nClick the link to choose your username: ${verifyLink}`,
+    text: `Welcome to Shoot Poker!\n\nClick the link below to choose your username:\n${verifyLink}`,
     html: `
       <p>Welcome to Shoot Poker!</p>
       <p>Please choose your username to finish registration:</p>
+      <p>
+        <a href="${verifyLink}" style="
+          display:inline-block;
+          padding:12px 18px;
+          background:#007bff;
+          color:#fff;
+          text-decoration:none;
+          border-radius:6px;
+          font-weight:bold;
+          font-family:Arial, sans-serif;
+        ">Choose username</a>
+      </p>
+      <p>If the button does not work, copy and paste this link:</p>
       <p><a href="${verifyLink}">${verifyLink}</a></p>
     `
   });

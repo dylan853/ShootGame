@@ -223,6 +223,7 @@ const startMenuState = {
   currentScreen: 'landing',
   loading: false,
   register: getDefaultRegisterForm(),
+  registerError: '',
   login: getDefaultLoginForm(),
   verificationToken: null,
   username: {
@@ -371,6 +372,7 @@ function cleanupStartMenuScreen(screenName, nextScreen) {
       }
     });
     startMenuState.register = getDefaultRegisterForm();
+    startMenuState.registerError = '';
   } else if (screenName === 'login') {
     startMenuState.login = getDefaultLoginForm();
   } else if (screenName === 'username') {
@@ -458,11 +460,12 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuInput('register.country', [169, 387, 379, 417], { width, height, placeholder: 'Country' });
       addMenuFileField('identity', [398, 174, 757, 420], { width, height });
       addMenuHotspot([45, 469, 110, 497], () => setStartMenuScreen('landing'), { width, height });
-      addMenuHotspot([700, 471, 764, 497], () => setStartMenuScreen('register2'), {
+      addMenuHotspot([700, 471, 764, 497], handleRegisterStep1Next, {
         width,
         height,
         disabled: false
       });
+      addRegisterErrorMessage(width, height);
       break;
     case 'register2':
       addMenuInput('register.houseNameOrNumber', [168, 178, 378, 208], { width, height, placeholder: 'House name/number' });
@@ -473,11 +476,12 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuInput('register.countryOfResidence', [169, 387, 379, 417], { width, height, placeholder: 'Country of residence' });
       addMenuFileField('billImage', [398, 174, 757, 420], { width, height });
       addMenuHotspot([45, 469, 110, 497], () => setStartMenuScreen('register1'), { width, height });
-      addMenuHotspot([700, 471, 764, 497], () => setStartMenuScreen('register3'), {
+      addMenuHotspot([700, 471, 764, 497], handleRegisterStep2Next, {
         width,
         height,
         disabled: false
       });
+      addRegisterErrorMessage(width, height);
       break;
     case 'register3':
       addMenuInput('register.maximumBet', [168, 178, 378, 208], { width, height, placeholder: 'Maximum bet' });
@@ -493,12 +497,13 @@ function renderStartMenuOverlays(screenName, width, height) {
         height,
         disabled: false
       });
+      addRegisterErrorMessage(width, height);
       break;
     case 'checkEmail':
       // Until email delivery is live, proceed directly to username screen on click
       addMenuHotspot(
         [0, 0, width, height],
-        () => setStartMenuScreen('username', { force: true }),
+        () => setStartMenuScreen('landing', { force: true }),
         { width, height }
       );
       break;
@@ -623,11 +628,42 @@ function addMenuInput(path, rect, options = {}) {
       event.target.value = value;
     }
     
+    const digitsOnlyFields = new Set([
+      'register.maximumBet',
+      'register.limitPerDay',
+      'register.maximumLoss',
+      'register.creditCardNumber',
+      'register.cvrNumber'
+    ]);
+    const isExpiryField = path === 'register.expiryDate';
+
+    if (digitsOnlyFields.has(path)) {
+      value = value.replace(/\D/g, '');
+      if (path === 'register.cvrNumber') {
+        value = value.slice(0, 3);
+      }
+      event.target.value = value;
+    }
+
+    if (isExpiryField) {
+      const digits = value.replace(/\D/g, '').slice(0, 4);
+      if (digits.length === 0) {
+        value = '';
+      } else if (digits.length <= 2) {
+        // Add slash immediately after two digits
+        value = digits.length === 2 ? `${digits}/` : digits;
+      } else {
+        value = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+      }
+      event.target.value = value;
+    }
+
     if (options.transform === 'uppercase') {
       value = value.toUpperCase();
       event.target.value = value;
     }
     setMenuFieldValue(path, value);
+    clearRegisterError();
   });
   
   input.addEventListener('change', (event) => {
@@ -641,11 +677,41 @@ function addMenuInput(path, rect, options = {}) {
       event.target.value = value;
     }
     
+    const digitsOnlyFields = new Set([
+      'register.maximumBet',
+      'register.limitPerDay',
+      'register.maximumLoss',
+      'register.creditCardNumber',
+      'register.cvrNumber'
+    ]);
+    const isExpiryField = path === 'register.expiryDate';
+
+    if (digitsOnlyFields.has(path)) {
+      value = value.replace(/\D/g, '');
+      if (path === 'register.cvrNumber') {
+        value = value.slice(0, 3);
+      }
+      event.target.value = value;
+    }
+
+    if (isExpiryField) {
+      const digits = value.replace(/\D/g, '').slice(0, 4);
+      if (digits.length === 0) {
+        value = '';
+      } else if (digits.length <= 2) {
+        value = digits.length === 2 ? `${digits}/` : digits;
+      } else {
+        value = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+      }
+      event.target.value = value;
+    }
+
     if (options.transform === 'uppercase') {
       value = value.toUpperCase();
       event.target.value = value;
     }
     setMenuFieldValue(path, value);
+    clearRegisterError();
   });
   
   input.addEventListener('click', (event) => {
@@ -758,33 +824,101 @@ function setRegisterFile(key, file) {
   renderStartMenuScreen();
 }
 
+function clearRegisterError() {
+  if (!startMenuState.registerError) return;
+  startMenuState.registerError = '';
+  if (startMenuRefs.overlay) {
+    delete startMenuRefs.overlay.dataset.currentScreen;
+  }
+  renderStartMenuScreen();
+}
+
 function isRegisterFormComplete() {
+  return !validateRegisterAll();
+}
+
+function setRegisterError(message) {
+  startMenuState.registerError = message || '';
+  if (startMenuRefs.overlay) {
+    delete startMenuRefs.overlay.dataset.currentScreen;
+  }
+  renderStartMenuScreen();
+}
+
+function validateRegisterScreen(screen) {
   const form = startMenuState.register;
-  const requiredStrings = [
-    form.firstName,
-    form.secondName,
-    form.dateOfBirth,
-    form.email,
-    form.phone && form.phone.length > 1 ? form.phone : '',
-    form.country,
-    form.houseNameOrNumber,
-    form.addressFirstLine,
-    form.addressSecondLine,
-    form.townOrCity,
-    form.county,
-    form.countryOfResidence,
-    form.maximumBet,
-    form.limitPerDay,
-    form.maximumLoss,
-    form.creditCardNumber,
-    form.expiryDate,
-    form.cvrNumber
-  ];
-  const filesPresent =
-    !!form.identityFile &&
-    !!form.billImageFile &&
-    !!form.creditCardImageFile;
-  return requiredStrings.every(Boolean) && filesPresent;
+  const nameRegex = /^[A-Za-z-]+$/;
+  const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const digitsRegex = /^\d+$/;
+
+  if (screen === 'register1') {
+    if (!form.secondName.trim()) return 'Second name is required.';
+    if (!nameRegex.test(form.secondName.trim())) return 'Second name can only contain letters and "-".';
+    if (!form.firstName.trim()) return 'First name is required.';
+    if (!nameRegex.test(form.firstName.trim())) return 'First name can only contain letters and "-".';
+    if (!form.dateOfBirth) return 'Date of birth is required.';
+    const age = getAgeFromDobString(form.dateOfBirth);
+    if (age === null) return 'Enter a valid date of birth.';
+    if (age < 18) return 'You must be 18 or older to register.';
+    if (!form.email.trim()) return 'Email is required.';
+    if (!emailRegex.test(form.email.trim())) return 'Enter a valid email address.';
+    if (!form.phone || form.phone.trim().length < 2) return 'Phone number is required.';
+    if (!form.country.trim()) return 'Country is required.';
+  }
+
+  if (screen === 'register2') {
+    if (!form.houseNameOrNumber.trim()) return 'House name/number is required.';
+    if (!form.addressFirstLine.trim()) return 'Address line 1 is required.';
+    if (!form.addressSecondLine.trim()) return 'Address line 2 is required.';
+    if (!form.townOrCity.trim()) return 'Town/City is required.';
+    if (!form.county.trim()) return 'County is required.';
+    if (!form.countryOfResidence.trim()) return 'Country of residence is required.';
+  }
+
+  if (screen === 'register3') {
+    if (!form.maximumBet.trim()) return 'Maximum bet is required.';
+    if (!digitsRegex.test(form.maximumBet.trim())) return 'Maximum bet must be digits only.';
+    if (!form.limitPerDay.trim()) return 'Limit per day is required.';
+    if (!digitsRegex.test(form.limitPerDay.trim())) return 'Limit per day must be digits only.';
+    if (!form.maximumLoss.trim()) return 'Maximum loss is required.';
+    if (!digitsRegex.test(form.maximumLoss.trim())) return 'Maximum loss must be digits only.';
+    if (!form.creditCardNumber.trim()) return 'Credit card number is required.';
+    if (!digitsRegex.test(form.creditCardNumber.trim())) return 'Credit card number must be digits only.';
+    if (!form.expiryDate.trim()) return 'Expiry date is required.';
+    const expiryMatch = /^(\d{2})\/(\d{2})$/.exec(form.expiryDate.trim());
+    if (!expiryMatch) return 'Expiry date must be in MM/YY format.';
+    const month = Number(expiryMatch[1]);
+    const year = Number(expiryMatch[2]);
+    if (month < 1 || month > 12) return 'Expiry month must be between 01 and 12.';
+    if (year < 26) return 'Expiry year must be 26 or later.';
+    if (!form.cvrNumber.trim()) return 'CVR number is required.';
+    if (!/^\d{3}$/.test(form.cvrNumber.trim())) {
+      return 'CVR number must be exactly 3 digits.';
+    }
+  }
+
+  return null;
+}
+
+function validateRegisterAll() {
+  return (
+    validateRegisterScreen('register1') ||
+    validateRegisterScreen('register2') ||
+    validateRegisterScreen('register3')
+  );
+}
+
+function getAgeFromDobString(dobString) {
+  if (!dobString) return null;
+  const dob = new Date(dobString);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return age;
 }
 
 function isLoginFormComplete() {
@@ -864,14 +998,56 @@ function renderComplianceOverlay() {
   overlay.appendChild(closeBtn);
 }
 
+function addRegisterErrorMessage(width, height) {
+  if (!startMenuRefs.overlay) return;
+  if (!startMenuState.registerError) return;
+  const errorBox = document.createElement('div');
+  errorBox.className = 'start-menu-register-error';
+  errorBox.textContent = startMenuState.registerError;
+  applyMenuRect(errorBox, [200, 470, 620, 500], width, height);
+  errorBox.style.color = '#d00';
+  errorBox.style.fontFamily = 'Arial Narrow, Arial, sans-serif';
+  errorBox.style.fontSize = '16px';
+  errorBox.style.fontWeight = '700';
+  errorBox.style.textAlign = 'center';
+  errorBox.style.display = 'flex';
+  errorBox.style.alignItems = 'center';
+  errorBox.style.justifyContent = 'center';
+  errorBox.style.pointerEvents = 'none';
+  errorBox.style.zIndex = '12';
+  startMenuRefs.overlay.appendChild(errorBox);
+}
+
+function handleRegisterStep1Next() {
+  const error = validateRegisterScreen('register1');
+  if (error) {
+    setRegisterError(error);
+    return;
+  }
+  setRegisterError('');
+  setStartMenuScreen('register2');
+}
+
+function handleRegisterStep2Next() {
+  const error = validateRegisterScreen('register2');
+  if (error) {
+    setRegisterError(error);
+    return;
+  }
+  setRegisterError('');
+  setStartMenuScreen('register3');
+}
+
 async function handleRegisterSubmit() {
   if (startMenuState.loading) {
     return;
   }
-  if (!isRegisterFormComplete()) {
-    toast('Please complete all registration fields.');
+  const validationError = validateRegisterAll();
+  if (validationError) {
+    setRegisterError(validationError);
     return;
   }
+  setRegisterError('');
   startMenuState.loading = true;
   renderStartMenuScreen();
   try {
@@ -1467,7 +1643,7 @@ function renderDealerCardOnTable(layer, cardBack, totalSeatsArg) {
   img.src = dealerImage || seatCardBack;
     
   img.style.transform = `rotate(${rotation}deg)`;
-  img.alt = state.game.dealerCard.label;
+  img.alt = state.game.dealerCard.label || 'Dealer card';
   const dealerKey = state.game.dealerCard.label || null;
   const shouldAnimate = dealerKey && state.lastDealerCardKey !== dealerKey;
   state.lastDealerCardKey = dealerKey;
@@ -1570,10 +1746,13 @@ function renderBetSlider() {
   
   // Helper function to add dealer card info in angled view
   const addDealerCardInfo = () => {
-    if (isAngledLayout() && state.game.dealerCard && state.game.dealerCard.label) {
+    if (isAngledLayout() && state.game.dealerCard) {
       const dealerCardInfo = document.createElement('p');
       dealerCardInfo.className = 'bet-slider-dealer-card';
-      dealerCardInfo.textContent = `Dealers Card: ${state.game.dealerCard.label}`;
+      const label = state.game.dealerCard.revealed
+        ? `Dealers Card: ${state.game.dealerCard.label}`
+        : 'Dealer card is face down';
+      dealerCardInfo.textContent = label;
       refs.betSliderContainer.appendChild(dealerCardInfo);
     }
   };
@@ -1582,14 +1761,30 @@ function renderBetSlider() {
   if (phase === 'awaiting-stake' && self.isDealer) {
     const message = document.createElement('p');
     message.className = 'bet-slider-message';
-    message.textContent = 'Choose a stake to start the round.';
+    message.textContent = 'Choose how to start the round.';
     refs.betSliderContainer.appendChild(message);
     
     addDealerCardInfo();
     
+    // const info = document.createElement('p');
+    // info.className = 'bet-slider-subtext';
+    // info.textContent = 'Reveal now for minimum stake, or choose stake with face down card';
+    // refs.betSliderContainer.appendChild(info);
+    
     const inlineContainer = document.createElement('div');
     inlineContainer.className = 'dealer-stake-inline';
-    
+
+    const revealBtn = document.createElement('button');
+    revealBtn.className = 'accent ghost';
+    revealBtn.textContent = `Reveal card & stake ${pennies(minimumStake)}`;
+    revealBtn.addEventListener('click', () => socket.emit('dealer-reveal-minimum'));
+    inlineContainer.appendChild(revealBtn);
+
+    const divider = document.createElement('span');
+    divider.className = 'dealer-stake-divider';
+    divider.textContent = 'or';
+    inlineContainer.appendChild(divider);
+
     const select = document.createElement('select');
     state.game.stakeOptions.forEach((value) => {
       const opt = document.createElement('option');
@@ -1602,7 +1797,7 @@ function renderBetSlider() {
     
     const button = document.createElement('button');
     button.className = 'accent';
-    button.textContent = 'Lock stake & start';
+    button.textContent = 'Keep Face Down!';
     button.addEventListener('click', () =>
       socket.emit('dealer-set-stake', { amount: Number(select.value) })
     );

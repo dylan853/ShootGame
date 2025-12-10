@@ -10,7 +10,7 @@ db.pragma('journal_mode = WAL');
 const STARTING_BALANCE = 5000; // pennies => £50.00
 
 function penniesToDisplay(pence) {
-  return `£${(pence / 100).toFixed(2)}`;
+  return `${(pence / 100).toFixed(2)}`;
 }
 
 function createModernUsersTable() {
@@ -27,6 +27,20 @@ function createModernUsersTable() {
       country TEXT,
       password_hash TEXT,
       identity_image_path TEXT,
+      house_name_or_number TEXT,
+      address_first_line TEXT,
+      address_second_line TEXT,
+      town_or_city TEXT,
+      county TEXT,
+      country_of_residence TEXT,
+      maximum_bet TEXT,
+      limit_per_day TEXT,
+      maximum_loss TEXT,
+      credit_card_number TEXT,
+      expiry_date TEXT,
+      cvr_number TEXT,
+      bill_image_path TEXT,
+      credit_card_image_path TEXT,
       extra_data TEXT,
       email_verified INTEGER NOT NULL DEFAULT 0,
       verification_token TEXT,
@@ -77,12 +91,26 @@ function ensureUserTable() {
   ensureColumn('country', 'country TEXT');
   ensureColumn('password_hash', 'password_hash TEXT');
   ensureColumn('identity_image_path', 'identity_image_path TEXT');
+  ensureColumn('house_name_or_number', 'house_name_or_number TEXT');
+  ensureColumn('address_first_line', 'address_first_line TEXT');
+  ensureColumn('address_second_line', 'address_second_line TEXT');
+  ensureColumn('town_or_city', 'town_or_city TEXT');
+  ensureColumn('county', 'county TEXT');
+  ensureColumn('country_of_residence', 'country_of_residence TEXT');
+  ensureColumn('maximum_bet', 'maximum_bet TEXT');
+  ensureColumn('limit_per_day', 'limit_per_day TEXT');
+  ensureColumn('maximum_loss', 'maximum_loss TEXT');
+  ensureColumn('credit_card_number', 'credit_card_number TEXT');
+  ensureColumn('expiry_date', 'expiry_date TEXT');
+  ensureColumn('cvr_number', 'cvr_number TEXT');
+  ensureColumn('bill_image_path', 'bill_image_path TEXT');
+  ensureColumn('credit_card_image_path', 'credit_card_image_path TEXT');
   ensureColumn('extra_data', 'extra_data TEXT');
   ensureColumn('email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0');
   ensureColumn('verification_token', 'verification_token TEXT');
   ensureColumn('status', "status TEXT NOT NULL DEFAULT 'pending'");
   ensureColumn('updated_at', 'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
-}
+  }
 
 ensureUserTable();
 
@@ -103,6 +131,20 @@ const insertUserStmt = db.prepare(`
     country,
     password_hash,
     identity_image_path,
+    house_name_or_number,
+    address_first_line,
+    address_second_line,
+    town_or_city,
+    county,
+    country_of_residence,
+    maximum_bet,
+    limit_per_day,
+    maximum_loss,
+    credit_card_number,
+    expiry_date,
+    cvr_number,
+    bill_image_path,
+    credit_card_image_path,
     extra_data,
     email_verified,
     verification_token,
@@ -120,6 +162,20 @@ const insertUserStmt = db.prepare(`
     @country,
     @passwordHash,
     @identityImagePath,
+    @houseNameOrNumber,
+    @addressFirstLine,
+    @addressSecondLine,
+    @townOrCity,
+    @county,
+    @countryOfResidence,
+    @maximumBet,
+    @limitPerDay,
+    @maximumLoss,
+    @creditCardNumber,
+    @expiryDate,
+    @cvrNumber,
+    @billImagePath,
+    @creditCardImagePath,
     @extraData,
     @emailVerified,
     @verificationToken,
@@ -137,11 +193,11 @@ const updateStatusStmt = db.prepare('UPDATE users SET status = ?, updated_at = C
 
 function mapUser(row) {
   if (!row) return null;
-  return {
+    return {
     ...row,
     balanceDisplay: penniesToDisplay(row.balance)
-  };
-}
+    };
+  }
 
 function createPendingUser({
   fullName,
@@ -153,6 +209,20 @@ function createPendingUser({
   country,
   passwordHash,
   identityImagePath,
+  houseNameOrNumber,
+  addressFirstLine,
+  addressSecondLine,
+  townOrCity,
+  county,
+  countryOfResidence,
+  maximumBet,
+  limitPerDay,
+  maximumLoss,
+  creditCardNumber,
+  expiryDate,
+  cvrNumber,
+  billImagePath,
+  creditCardImagePath,
   extraData,
   verificationToken
 }) {
@@ -168,6 +238,20 @@ function createPendingUser({
     country,
     passwordHash,
     identityImagePath,
+    houseNameOrNumber,
+    addressFirstLine,
+    addressSecondLine,
+    townOrCity,
+    county,
+    countryOfResidence,
+    maximumBet,
+    limitPerDay,
+    maximumLoss,
+    creditCardNumber,
+    expiryDate,
+    cvrNumber,
+    billImagePath,
+    creditCardImagePath,
     extraData,
     emailVerified: 0,
     verificationToken,

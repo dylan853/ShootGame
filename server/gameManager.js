@@ -105,7 +105,7 @@ function generateGameCode() {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const code = pool[Math.floor(Math.random() * pool.length)];
     if (!games.has(code)) {
-      return code;
+  return code;
     }
   }
   const availableCode = pool.find((word) => !games.has(word));
@@ -307,7 +307,7 @@ function dealCards(game) {
   const deck = shuffle(createDeck());
   game.deck = deck;
   game.dealerCard = deck.pop();
-  game.dealerCard.revealed = true;
+  game.dealerCard.revealed = false;
   game.players.forEach((player) => {
     if (!player.isDealer) {
       player.cards = [deck.pop(), deck.pop(), deck.pop()].map((card) => ({
@@ -372,9 +372,9 @@ function cycleDealerCard(game) {
     nextCard = game.deck.pop();
   }
   if (!nextCard) return;
-  nextCard.revealed = true;
+  nextCard.revealed = false;
   game.dealerCard = nextCard;
-  addMessage(game, `Dealer draws a new card (${nextCard.label}).`);
+  addMessage(game, 'Dealer draws a new face-down card.');
 }
 
 function collectMinimumBetFromPlayers(game) {
@@ -427,6 +427,10 @@ function maybeHandleDealerKing(io, game) {
     if (game) game.kingSkipInProgress = false;
     return false;
   }
+  if (!game.dealerCard.revealed) {
+    game.kingSkipInProgress = false;
+    return false;
+  }
   if (game.dealerCard.value !== KING_CARD_VALUE) {
     game.kingSkipInProgress = false;
     return false;
@@ -470,6 +474,12 @@ function maybeHandleDealerKing(io, game) {
   }, KING_ANNOUNCEMENT_DELAY);
   skipRoundAfterDealerKing(io, game);
   return true;
+}
+
+function revealDealerCard(game) {
+  if (game && game.dealerCard) {
+    game.dealerCard.revealed = true;
+  }
 }
 function getPlayersClockwiseOrder(game, startSeat = 0) {
   const count = game.players.length;
@@ -582,11 +592,12 @@ function sanitizeGame(game) {
     potDisplay: penniesToDisplay(game.pot),
     deckCount: Array.isArray(game.deck) ? game.deck.length : 0,
     dealerCard: game.dealerCard ? {
-      label: game.dealerCard.label,
-      suit: game.dealerCard.suit,
-      icon: game.dealerCard.suitIcon,
-      value: game.dealerCard.value,
-      image: game.dealerCard.image
+      revealed: !!game.dealerCard.revealed,
+      label: game.dealerCard.revealed ? game.dealerCard.label : null,
+      suit: game.dealerCard.revealed ? game.dealerCard.suit : null,
+      icon: game.dealerCard.revealed ? game.dealerCard.suitIcon : null,
+      value: game.dealerCard.revealed ? game.dealerCard.value : null,
+      image: game.dealerCard.revealed ? game.dealerCard.image : FACE_DOWN_ASSET
     } : null,
     waitingForStake: game.state === 'awaiting-stake',
     gamesCompleted: game.gamesCompleted,
@@ -791,6 +802,10 @@ function setDealerStake(io, socketId, amount) {
   if (game.state !== 'awaiting-stake') {
     throw new Error('Stake has already been set.');
   }
+  if (!game.dealerCard) {
+    throw new Error('Dealer card not ready.');
+  }
+  const wasFaceDown = !game.dealerCard.revealed;
   const parsed = Number(amount);
   if (!STAKE_OPTIONS.includes(parsed)) {
     throw new Error('Invalid stake amount.');
@@ -803,8 +818,38 @@ function setDealerStake(io, socketId, amount) {
   trackContribution(player, parsed);
   game.currentStake = parsed;
   game.state = 'active';
-  addMessage(game, `${player.username} sets the stake at ${penniesToDisplay(parsed)} and feeds the pot.`);
+  if (wasFaceDown) {
+    addMessage(game, `${player.username} keeps the dealer card face down and sets the stake at ${penniesToDisplay(parsed)}.`);
+  } else {
+    addMessage(game, `${player.username} sets the stake at ${penniesToDisplay(parsed)} and feeds the pot.`);
+  }
   emitState(io, game);
+}
+
+function dealerRevealWithMinimum(io, socketId) {
+  const { game, player } = ensurePlayerContext(socketId);
+  if (!player.isDealer) {
+    throw new Error('Only the dealer can reveal the dealer card.');
+  }
+  if (game.state !== 'awaiting-stake') {
+    throw new Error('Stake has already been set.');
+  }
+  if (!game.dealerCard) {
+    throw new Error('Dealer card not ready.');
+  }
+  const stake = MINIMUM_STAKE;
+  if (player.balance < stake) {
+    throw new Error('Insufficient balance to cover the stake.');
+  }
+  revealDealerCard(game);
+  applyBalance(player, -stake);
+  game.pot += stake;
+  trackContribution(player, stake);
+  game.currentStake = stake;
+  game.state = 'active';
+  addMessage(game, `${player.username} flips the dealer card and places the minimum stake of ${penniesToDisplay(stake)}.`);
+  emitState(io, game);
+  maybeHandleDealerKing(io, game);
 }
 
 function ensureTurn(game, player) {
@@ -824,6 +869,14 @@ function handleStake(io, socketId) {
   }
   if (!game.dealerCard) {
     throw new Error('Dealer card has not been revealed yet.');
+  }
+  let kingHandled = false;
+  if (!game.dealerCard.revealed) {
+    revealDealerCard(game);
+    kingHandled = maybeHandleDealerKing(io, game);
+    if (kingHandled) {
+      return;
+    }
   }
   if (player.balance < MINIMUM_STAKE) {
     throw new Error('Insufficient balance for the minimum stake.');
@@ -929,6 +982,11 @@ function handleBet(io, socketId, amount) {
   }
   if (!game.dealerCard) {
     throw new Error('Dealer card has not been revealed yet.');
+  }
+  if (game.dealerCard && !game.dealerCard.revealed) {
+    revealDealerCard(game);
+    const handled = maybeHandleDealerKing(io, game);
+    if (handled) return;
   }
   const parsed = Number(amount);
   const minBet = MINIMUM_STAKE + 10; // 10p more than minimum stake
@@ -1069,6 +1127,11 @@ function handleShoot(io, socketId) {
   if (!game.dealerCard) {
     throw new Error('Dealer card has not been revealed yet.');
   }
+  if (game.dealerCard && !game.dealerCard.revealed) {
+    revealDealerCard(game);
+    const handled = maybeHandleDealerKing(io, game);
+    if (handled) return;
+  }
   const unrevealedCards = player.cards.filter((c) => !c.revealed);
   if (unrevealedCards.length === 0) {
     throw new Error('All cards already revealed.');
@@ -1184,6 +1247,11 @@ function handleAllIn(io, socketId) {
   }
   if (!game.dealerCard) {
     throw new Error('Dealer card has not been revealed yet.');
+  }
+  if (game.dealerCard && !game.dealerCard.revealed) {
+    revealDealerCard(game);
+    const handled = maybeHandleDealerKing(io, game);
+    if (handled) return;
   }
   const unrevealedCards = player.cards.filter((c) => !c.revealed);
   if (unrevealedCards.length === 0) {
@@ -1486,6 +1554,7 @@ module.exports = {
   createGame,
   joinGame,
   toggleReady,
+  dealerRevealWithMinimum,
   setDealerStake,
   handleStake,
   handleBet,

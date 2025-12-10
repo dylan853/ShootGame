@@ -12,14 +12,21 @@ function getTransporter() {
     SMTP_PASS,
     SMTP_SECURE
   } = process.env;
-  if (SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS) {
+  // Fall back to Shoot Poker defaults when env not provided
+  const host = SMTP_HOST || 'smtp.dreamhost.com';
+  const port = Number(SMTP_PORT || 465);
+  const user = SMTP_USER || 'no-reply@shoot.poker';
+  const pass = SMTP_PASS || 'Auto-caravan5';
+  const secure = SMTP_SECURE ? SMTP_SECURE === 'true' : true;
+
+  if (host && port && user && pass) {
     transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: Number(SMTP_PORT),
-      secure: SMTP_SECURE === 'true',
+      host,
+      port,
+      secure,
       auth: {
-        user: SMTP_USER,
-        pass: SMTP_PASS
+        user,
+        pass
       }
     });
   } else {
@@ -44,7 +51,7 @@ async function sendSystemEmail({
   }
   await activeTransporter.sendMail({
     to,
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@shoot.poker',
     subject,
     text,
     html
