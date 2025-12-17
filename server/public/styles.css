@@ -145,6 +145,30 @@ body::before {
   color: rgba(0, 0, 0, 0.55);
 }
 
+.start-menu-settings-display {
+  position: absolute;
+  border: none;
+  background: transparent;
+  color: #000;
+  font-family: 'Arial Narrow', 'Segoe UI', sans-serif;
+  font-size: clamp(1rem, 2.2vw, 1.5rem);
+  padding: 0.25rem;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+/* Settings modal text sizing — smaller to fit tight fields */
+.start-menu-settings-open .start-menu-input {
+  font-size: clamp(0.8rem, 1.6vw, 1.05rem) !important;
+  padding: 0.15rem !important;
+}
+
+.start-menu-settings-open .start-menu-settings-display {
+  font-size: clamp(0.8rem, 1.6vw, 1.05rem);
+  padding: 0.15rem;
+}
+
 .start-menu-hotspot {
   position: absolute;
   border: none;
@@ -236,6 +260,16 @@ body::before {
   z-index: 4;
 }
 
+#start-menu-settings-modal img {
+  width: min(45vw, 360px);
+}
+
+#start-menu-settings-modal {
+  justify-content: flex-end;
+  padding-right: 0vw;
+  z-index: 4;
+}
+
 .start-menu-rules-open #start-menu-overlay-layer,
 .start-menu-rules-open #start-menu-image,
 .start-menu-rules-open .start-menu-close {
@@ -281,6 +315,28 @@ body::before {
 }
 
 .start-menu-compliance-open #start-menu-compliance-modal {
+  pointer-events: auto;
+}
+
+#start-menu-settings-close {
+  display: none;
+}
+
+.start-menu-settings-open .start-menu-layer > * {
+  pointer-events: none !important;
+}
+
+.start-menu-settings-open #start-menu-settings-modal {
+  pointer-events: auto;
+}
+
+.start-menu-settings-open #start-menu-overlay-layer,
+.start-menu-settings-open #start-menu-image,
+.start-menu-settings-open .start-menu-close {
+  pointer-events: none !important;
+}
+
+.start-menu-settings-open #start-menu-settings-modal {
   pointer-events: auto;
 }
 

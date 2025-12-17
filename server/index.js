@@ -13,7 +13,9 @@ const {
   verifyToken,
   chooseUsername,
   loginUser,
-  getUserProfile
+  verifyLoginPassword,
+  getUserProfile,
+  updateSettings
 } = require('./authService');
 const {
   MIN_PLAYERS,
@@ -100,10 +102,20 @@ app.post('/api/auth/username', (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const user = await loginUser(req.body || {});
-    res.json({ success: true, user });
+    const result = await loginUser(req.body || {});
+    res.json({ success: true, ...result });
   } catch (err) {
     res.status(err.statusCode || 400).json({ message: err.message || 'Login failed' });
+  }
+});
+
+app.post('/api/auth/login/password', async (req, res) => {
+  try {
+    const { challengeToken, password } = req.body || {};
+    const user = await verifyLoginPassword(challengeToken, password);
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(err.statusCode || 400).json({ message: err.message || 'Password verification failed' });
   }
 });
 
@@ -118,6 +130,16 @@ app.get('/api/auth/profile', (req, res) => {
     res.json({ success: true, user: profile });
   } catch (err) {
     res.status(400).json({ message: err.message || 'Unable to load profile' });
+  }
+});
+
+app.post('/api/auth/settings', async (req, res) => {
+  try {
+    const { userId, updates } = req.body || {};
+    const user = await updateSettings(userId, updates || {});
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(err.statusCode || 400).json({ message: err.message || 'Unable to save settings' });
   }
 });
 

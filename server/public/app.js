@@ -134,6 +134,7 @@ const START_MENU_IMAGE_PATHS = {
   checkEmail: '/StartMenu/StartMenuCheckEmail.jpg',
   username: '/StartMenu/StartMenuChooseUsername.jpg',
   login: '/StartMenu/StartMenuLogin.jpg',
+  password: '/StartMenu/StartMenuEnterPassword.jpg',
   authed: '/StartMenu/StartMenuRulesPlayLogout.jpg',
   play: '/StartMenu/StartMenuCreateOrJoinTable.jpg'
 };
@@ -151,6 +152,40 @@ const COMPLIANCE_DOWNLOADS = [
 
 const COMPLIANCE_CLOSE_RECT = [36, 804, 110, 837];
 const RULES_CLOSE_RECT = [922, 1170, 1028, 1220];
+const SETTINGS_BUTTON_RECTS = {
+  close: [238, 826, 320, 858],
+  edit: [266, 30, 331, 65],
+  save: [241, 830, 313, 859]
+};
+const SETTINGS_FIELD_RECTS = {
+  firstName: [173, 88, 311, 111],
+  secondName: [166, 115, 304, 138],
+  dateOfBirth: [163, 143, 301, 166],
+  identityNumber: [147, 171, 285, 194],
+  identityType: [161, 198, 299, 221],
+  email: [98, 225, 236, 248],
+  phone: [106, 252, 244, 275],
+  houseNameOrNumber: [185, 280, 323, 303],
+  addressFirstLine: [113, 307, 251, 330],
+  addressSecondLine: [119, 335, 257, 358],
+  townOrCity: [139, 363, 277, 386],
+  county: [112, 390, 251, 413],
+  countryOfResidence: [120, 417, 258, 440],
+  language: [137, 445, 277, 468],
+  currency: [127, 472, 185, 495],
+  maximumBet: [166, 501, 225, 524],
+  maxDailyStake: [188, 529, 246, 552],
+  weeklyMaxStake: [211, 556, 269, 579],
+  creditCardNumber: [170, 583, 329, 606],
+  expiryDate: [149, 610, 221, 633],
+  cvrNumber: [83, 638, 141, 661],
+  username: [148, 665, 286, 688],
+  password: [138, 693, 276, 716],
+  aliasName: [152, 720, 290, 743],
+  avatar: [107, 748, 245, 771]
+};
+const SETTINGS_LANGUAGE_OPTIONS = ['English', 'Spanish', 'French', 'German', 'Italian', 'Danish'];
+const SETTINGS_CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP'];
 
 const START_MENU_CLOSE_TARGETS = {
   register1: 'landing',
@@ -178,6 +213,10 @@ const startMenuRefs = {
   complianceOverlay: document.getElementById('start-menu-compliance-overlay'),
   complianceImage: document.getElementById('start-menu-compliance-image'),
   complianceClose: document.getElementById('start-menu-compliance-close'),
+  settingsModal: document.getElementById('start-menu-settings-modal'),
+  settingsOverlay: document.getElementById('start-menu-settings-overlay'),
+  settingsImage: document.getElementById('start-menu-settings-image'),
+  settingsClose: document.getElementById('start-menu-settings-close'),
   closeBtn: document.getElementById('start-menu-close-btn'),
   appShell: document.getElementById('app')
 };
@@ -218,6 +257,47 @@ function getDefaultLoginForm() {
   };
 }
 
+function getDefaultSettingsValues(user = null) {
+  return {
+    firstName: (user && user.firstName) || '',
+    secondName: (user && user.secondName) || '',
+    dateOfBirth: (user && user.dateOfBirth) || '',
+    identityNumber: (user && user.identityNumber) || '',
+    identityType: (user && user.identityType) || '',
+    email: (user && user.email) || '',
+    phone: (user && user.phone) || '+',
+    houseNameOrNumber: (user && user.houseNameOrNumber) || '',
+    addressFirstLine: (user && user.addressFirstLine) || '',
+    addressSecondLine: (user && user.addressSecondLine) || '',
+    townOrCity: (user && user.townOrCity) || '',
+    county: (user && user.county) || '',
+    countryOfResidence: (user && user.countryOfResidence) || '',
+    country: (user && user.country) || '',
+    language: (user && user.language) || 'English',
+    currency: (user && user.currency) || 'USD',
+    maximumBet: (user && user.maximumBet) || '',
+    limitPerDay: (user && user.limitPerDay) || '',
+    maxDailyStake: (user && user.maxDailyStake) || '',
+    weeklyMaxStake: (user && user.weeklyMaxStake) || '',
+    maximumLoss: (user && user.maximumLoss) || '',
+    creditCardNumber: (user && user.creditCardNumber) || '',
+    expiryDate: (user && user.expiryDate) || '',
+    cvrNumber: (user && user.cvrNumber) || '',
+    username: (user && user.username) || '',
+    aliasName: (user && user.aliasName) || (user && user.username) || '',
+    password: '',
+    passwordSet: Boolean(user && user.passwordSet),
+    avatar: ''
+  };
+}
+
+function getDefaultPasswordChallenge() {
+  return {
+    value: '',
+    challengeToken: null
+  };
+}
+
 const startMenuState = {
   active: true,
   currentScreen: 'landing',
@@ -225,6 +305,13 @@ const startMenuState = {
   register: getDefaultRegisterForm(),
   registerError: '',
   login: getDefaultLoginForm(),
+  password: getDefaultPasswordChallenge(),
+  settings: {
+    mode: 'view',
+    values: getDefaultSettingsValues(),
+    loading: false,
+    error: ''
+  },
   verificationToken: null,
   username: {
     value: '',
@@ -285,6 +372,13 @@ function wireEvents() {
     }
   });
   startMenuRefs.complianceImage?.addEventListener('load', renderComplianceOverlay);
+  startMenuRefs.settingsClose?.addEventListener('click', closeStartMenuSettingsModal);
+  startMenuRefs.settingsModal?.addEventListener('click', (event) => {
+    if (event.target === startMenuRefs.settingsModal) {
+      closeStartMenuSettingsModal();
+    }
+  });
+  startMenuRefs.settingsImage?.addEventListener('load', renderSettingsOverlay);
   startMenuRefs.closeBtn?.addEventListener('click', () => {
     const target =
       startMenuRefs.closeBtn?.getAttribute('data-target') ||
@@ -379,6 +473,8 @@ function cleanupStartMenuScreen(screenName, nextScreen) {
     startMenuState.username.value = '';
   } else if (screenName === 'play') {
     startMenuState.play.code = '';
+  } else if (screenName === 'password') {
+    startMenuState.password = getDefaultPasswordChallenge();
   }
 }
 
@@ -508,13 +604,13 @@ function renderStartMenuOverlays(screenName, width, height) {
       );
       break;
     case 'username':
-      addMenuInput('username.value', [306, 188, 517, 218], {
+      addMenuInput('username.value', [305, 306, 515, 336], {
         width,
         height,
         placeholder: 'Username',
         maxLength: 18
       });
-      addMenuHotspot([364, 261, 453, 286], handleUsernameSubmit, {
+      addMenuHotspot([374, 376, 443, 400], handleUsernameSubmit, {
         width,
         height,
         // Keep clickable even if invalid; server will validate
@@ -542,6 +638,7 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuHotspot([30, 461, 98, 497], openStartMenuRulesModal, { width, height });
       addMenuHotspot([108, 467, 163, 499], () => setStartMenuScreen('play'), { width, height });
       addMenuHotspot([693, 465, 791, 499], handleMenuLogout, { width, height });
+      addMenuHotspot([753, 18, 779, 42], openStartMenuSettingsModal, { width, height });
       break;
     case 'play':
       addMenuInput('play.code', [306, 188, 515, 218], {
@@ -561,6 +658,19 @@ function renderStartMenuOverlays(screenName, width, height) {
         width,
         height,
         // Keep clickable even if code invalid; server will validate
+        disabled: false
+      });
+      break;
+    case 'password':
+      addMenuInput('password.value', [305, 240, 515, 270], {
+        width,
+        height,
+        placeholder: 'Password',
+        type: 'password'
+      });
+      addMenuHotspot([351, 307, 474, 335], handlePasswordSubmit, {
+        width,
+        height,
         disabled: false
       });
       break;
@@ -951,6 +1061,39 @@ function closeStartMenuComplianceModal() {
   startMenuRefs.complianceModal?.classList.add('hidden');
 }
 
+async function openStartMenuSettingsModal() {
+  startMenuState.settings.loading = true;
+  syncSettingsFromUser();
+  startMenuState.settings.mode = 'view';
+  startMenuState.settings.error = '';
+  if (startMenuRefs.settingsImage) {
+    startMenuRefs.settingsImage.src = '/StartMenu/SettingsMenu.png';
+  }
+  renderSettingsOverlay();
+  startMenuRefs.root?.classList.add('start-menu-settings-open');
+  startMenuRefs.settingsModal?.classList.remove('hidden');
+  try {
+    await refreshUserProfile();
+    syncSettingsFromUser();
+    renderSettingsOverlay();
+  } finally {
+    startMenuState.settings.loading = false;
+    renderSettingsOverlay();
+  }
+}
+
+function closeStartMenuSettingsModal() {
+  startMenuState.settings.mode = 'view';
+  startMenuState.settings.error = '';
+  startMenuState.settings.values.password = '';
+  startMenuState.settings.values.passwordSet = Boolean(state.user && state.user.passwordSet);
+  if (startMenuRefs.settingsImage) {
+    startMenuRefs.settingsImage.src = '/StartMenu/SettingsMenu.png';
+  }
+  startMenuRefs.root?.classList.remove('start-menu-settings-open');
+  startMenuRefs.settingsModal?.classList.add('hidden');
+}
+
 function renderRulesOverlay() {
   const overlay = startMenuRefs.rulesOverlay;
   const img = startMenuRefs.rulesImage;
@@ -981,7 +1124,7 @@ function renderComplianceOverlay() {
     const link = document.createElement('a');
     link.className = 'start-menu-hotspot';
     link.href = `/compliancepdfs/${encodeURIComponent(item.file)}`;
-    link.download = item.file;
+    // Open in a new tab to let the user view or download from the PDF viewer
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.setAttribute('aria-label', `Download ${item.file}`);
@@ -996,6 +1139,174 @@ function renderComplianceOverlay() {
   applyMenuRect(closeBtn, COMPLIANCE_CLOSE_RECT, baseWidth, baseHeight);
   closeBtn.addEventListener('click', closeStartMenuComplianceModal);
   overlay.appendChild(closeBtn);
+}
+
+function renderSettingsOverlay() {
+  const overlay = startMenuRefs.settingsOverlay;
+  const img = startMenuRefs.settingsImage;
+  if (!overlay || !img) return;
+
+  const baseWidth = img.naturalWidth || MENU_COORDINATE_BASE.width;
+  const baseHeight = img.naturalHeight || MENU_COORDINATE_BASE.height;
+  overlay.innerHTML = '';
+
+  const isEdit = startMenuState.settings.mode === 'edit';
+  const values = startMenuState.settings.values;
+
+  const addDisplay = (key, options = {}) => {
+    const rect = SETTINGS_FIELD_RECTS[key];
+    if (!rect) return;
+    const el = document.createElement('div');
+    const raw = values[key];
+    let text = raw;
+    if (key === 'password') {
+      text = values.passwordSet ? '••••' : '?';
+    } else if (!text || (typeof text === 'string' && !text.trim())) {
+      text = '?';
+    }
+    el.textContent = text;
+    el.className = 'start-menu-settings-display';
+    applyMenuRect(el, rect, baseWidth, baseHeight);
+    overlay.appendChild(el);
+  };
+
+  const addInput = (key, options = {}) => {
+    const rect = SETTINGS_FIELD_RECTS[key];
+    if (!rect) return;
+    let control;
+    if (options.type === 'select') {
+      control = document.createElement('select');
+      (options.options || []).forEach((opt) => {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        control.appendChild(o);
+      });
+      control.value = values[key] || options.options?.[0] || '';
+    } else {
+      control = document.createElement('input');
+      control.type = options.type || 'text';
+      if (key === 'password') {
+        // Show as plain text while editing; no masking because we don't store the original
+        control.type = 'text';
+        control.value = values[key] || '';
+      } else {
+        control.value = values[key] || (options.phoneField ? '+' : '');
+      }
+      control.placeholder = options.placeholder || '';
+      if (options.maxLength && options.maxLength > 0) {
+        control.maxLength = options.maxLength;
+      }
+    }
+    control.className = 'start-menu-input';
+    applyMenuRect(control, rect, baseWidth, baseHeight);
+    control.style.pointerEvents = 'auto';
+    control.style.zIndex = '12';
+    control.addEventListener('input', (event) => {
+      let val = event.target.value;
+      if (options.phoneField) {
+        if (!val.startsWith('+')) {
+          val = '+' + val.replace(/^\+*/, '');
+        }
+        val = val.replace(/[^\d\s+\-]/g, '');
+      }
+      if (options.digitsOnly) {
+        val = val.replace(/\D/g, '');
+        if (key === 'cvrNumber') {
+          val = val.slice(0, 3);
+        }
+      }
+      if (options.expiryField) {
+        const digits = val.replace(/\D/g, '').slice(0, 4);
+        if (digits.length === 0) {
+          val = '';
+        } else if (digits.length <= 2) {
+          val = digits.length === 2 ? `${digits}/` : digits;
+        } else {
+          val = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+        }
+      }
+      event.target.value = val;
+      if (key === 'username' || key === 'aliasName') {
+        startMenuState.settings.values.username = val;
+        startMenuState.settings.values.aliasName = val;
+      } else {
+        startMenuState.settings.values[key] = val;
+      }
+    });
+    overlay.appendChild(control);
+  };
+
+  Object.keys(SETTINGS_FIELD_RECTS).forEach((key) => {
+    if (key === 'avatar') {
+      if (isEdit) {
+        addDisplay(key);
+      } else {
+        addDisplay(key);
+      }
+      return;
+    }
+    if (isEdit) {
+      if (key === 'language') {
+        addInput(key, { type: 'select', options: SETTINGS_LANGUAGE_OPTIONS });
+      } else if (key === 'currency') {
+        addInput(key, { type: 'select', options: SETTINGS_CURRENCY_OPTIONS });
+      } else if (key === 'phone') {
+        addInput(key, { phoneField: true });
+      } else if (key === 'expiryDate') {
+        addInput(key, { expiryField: true });
+      } else if (['maximumBet', 'maxDailyStake', 'weeklyMaxStake', 'maximumLoss', 'creditCardNumber', 'cvrNumber'].includes(key)) {
+        addInput(key, { digitsOnly: true });
+      } else if (key === 'password') {
+        addInput(key, { type: 'password', maxLength: 32 });
+      } else {
+        addInput(key, {});
+      }
+    } else {
+      addDisplay(key);
+    }
+  });
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'start-menu-hotspot';
+  applyMenuRect(closeBtn, SETTINGS_BUTTON_RECTS.close, baseWidth, baseHeight);
+  closeBtn.addEventListener('click', closeStartMenuSettingsModal);
+  overlay.appendChild(closeBtn);
+
+  if (isEdit) {
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'start-menu-hotspot';
+    applyMenuRect(saveBtn, SETTINGS_BUTTON_RECTS.save, baseWidth, baseHeight);
+    saveBtn.addEventListener('click', handleSettingsSave);
+    overlay.appendChild(saveBtn);
+  } else {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'start-menu-hotspot';
+    applyMenuRect(editBtn, SETTINGS_BUTTON_RECTS.edit, baseWidth, baseHeight);
+    editBtn.addEventListener('click', handleSettingsEdit);
+    overlay.appendChild(editBtn);
+  }
+
+  if (startMenuState.settings.error) {
+    const errorBox = document.createElement('div');
+    errorBox.className = 'start-menu-register-error';
+    errorBox.textContent = startMenuState.settings.error;
+    applyMenuRect(errorBox, [60, 470, 480, 500], width, height);
+    errorBox.style.color = '#d00';
+    errorBox.style.fontFamily = 'Arial Narrow, Arial, sans-serif';
+    errorBox.style.fontSize = '16px';
+    errorBox.style.fontWeight = '700';
+    errorBox.style.textAlign = 'center';
+    errorBox.style.display = 'flex';
+    errorBox.style.alignItems = 'center';
+    errorBox.style.justifyContent = 'center';
+    errorBox.style.pointerEvents = 'none';
+    errorBox.style.zIndex = '14';
+    overlay.appendChild(errorBox);
+  }
 }
 
 function addRegisterErrorMessage(width, height) {
@@ -1178,9 +1489,17 @@ async function handleLoginSubmit() {
     if (!res.ok) {
       throw new Error(payload.message || 'Login failed.');
     }
-    setLoggedInUser(payload.user);
-    toast('Logged in.');
-    setStartMenuScreen('authed', { force: true });
+    if (payload.requiresPassword) {
+      startMenuState.password.challengeToken = payload.challengeToken || null;
+      startMenuState.password.value = '';
+      toast('Enter your password to continue.');
+      setStartMenuScreen('password', { force: true });
+    } else {
+      setLoggedInUser(payload.user);
+      startMenuState.password = getDefaultPasswordChallenge();
+      toast('Logged in.');
+      setStartMenuScreen('authed', { force: true });
+    }
   } catch (err) {
     toast(err.message || 'Unable to log in.');
   } finally {
@@ -1189,16 +1508,195 @@ async function handleLoginSubmit() {
   }
 }
 
+async function handlePasswordSubmit() {
+  if (!startMenuState.password.challengeToken || startMenuState.loading) {
+    return;
+  }
+  const value = (startMenuState.password.value || '').trim();
+  if (!value) {
+    toast('Enter your password.');
+    return;
+  }
+  startMenuState.loading = true;
+  renderStartMenuScreen();
+  try {
+    const res = await fetch('/api/auth/login/password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        challengeToken: startMenuState.password.challengeToken,
+        password: value
+      })
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload.message || 'Password check failed.');
+    }
+    setLoggedInUser(payload.user);
+    startMenuState.password = getDefaultPasswordChallenge();
+    toast('Logged in.');
+    setStartMenuScreen('authed', { force: true });
+  } catch (err) {
+    toast(err.message || 'Unable to verify password.');
+  } finally {
+    startMenuState.loading = false;
+    renderStartMenuScreen();
+  }
+}
+
+function handleSettingsEdit() {
+  startMenuState.settings.mode = 'edit';
+  startMenuState.settings.error = '';
+  startMenuState.settings.values.password = '';
+  if (startMenuRefs.settingsImage) {
+    startMenuRefs.settingsImage.src = '/StartMenu/EditSettingsMenu.png';
+  }
+  renderSettingsOverlay();
+}
+
+async function handleSettingsSave() {
+  if (!state.user || !state.user.userId) {
+    toast('Please log in first.');
+    return;
+  }
+  if (startMenuState.settings.loading) return;
+
+  const v = startMenuState.settings.values;
+  // Keep username and alias in sync
+  if (v.username !== v.aliasName) {
+    v.aliasName = v.username;
+  }
+  const updates = {
+    firstName: (v.firstName || '').trim(),
+    secondName: (v.secondName || '').trim(),
+    dateOfBirth: v.dateOfBirth || '',
+    identityNumber: (v.identityNumber || '').trim(),
+    identityType: (v.identityType || '').trim(),
+    email: (v.email || '').trim(),
+    phone: (v.phone || '').trim(),
+    houseNameOrNumber: (v.houseNameOrNumber || '').trim(),
+    addressFirstLine: (v.addressFirstLine || '').trim(),
+    addressSecondLine: (v.addressSecondLine || '').trim(),
+    townOrCity: (v.townOrCity || '').trim(),
+    county: (v.county || '').trim(),
+    countryOfResidence: (v.countryOfResidence || '').trim(),
+    country: (v.country || '').trim(),
+    language: v.language || 'English',
+    currency: v.currency || 'USD',
+    maximumBet: (v.maximumBet || '').trim(),
+    limitPerDay: (v.limitPerDay || v.maxDailyStake || '').trim(),
+    maxDailyStake: (v.maxDailyStake || v.limitPerDay || '').trim(),
+    weeklyMaxStake: (v.weeklyMaxStake || '').trim(),
+    maximumLoss: (v.maximumLoss || '').trim(),
+    creditCardNumber: (v.creditCardNumber || '').trim(),
+    expiryDate: (v.expiryDate || '').trim(),
+    cvrNumber: (v.cvrNumber || '').trim(),
+    username: (v.username || '').trim(),
+    aliasName: (v.aliasName || '').trim()
+  };
+  if (v.password && v.password.trim()) {
+    updates.password = v.password.trim();
+  }
+  if (updates.phone && !updates.phone.startsWith('+')) {
+    updates.phone = `+${updates.phone.replace(/^\+/, '')}`;
+  }
+
+  startMenuState.settings.loading = true;
+  startMenuState.settings.error = '';
+  renderSettingsOverlay();
+  try {
+    const res = await fetch('/api/auth/settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userId: state.user.userId,
+        updates
+      })
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload.message || 'Unable to save settings.');
+    }
+    // Persist user and keep settings open with fresh values
+    setLoggedInUser(payload.user);
+    startMenuState.settings.values = getDefaultSettingsValues(payload.user);
+    startMenuState.settings.mode = 'view';
+    startMenuState.settings.error = '';
+    if (startMenuRefs.settingsImage) {
+      startMenuRefs.settingsImage.src = '/StartMenu/SettingsMenu.png';
+    }
+    renderSettingsOverlay();
+    toast('Settings saved.');
+  } catch (err) {
+    startMenuState.settings.error = err.message || 'Unable to save settings.';
+    renderSettingsOverlay();
+  } finally {
+    startMenuState.settings.loading = false;
+    renderSettingsOverlay();
+  }
+}
+
 function setLoggedInUser(user) {
   if (!user) return;
     state.user = {
     userId: user.userId,
     username: user.username,
+    aliasName: user.aliasName || user.username,
+    email: user.email,
+    phone: user.phone,
+    firstName: user.firstName,
+    secondName: user.secondName,
+    dateOfBirth: user.dateOfBirth,
+    identityNumber: user.identityNumber,
+    identityType: user.identityType,
+    country: user.country,
+    houseNameOrNumber: user.houseNameOrNumber,
+    addressFirstLine: user.addressFirstLine,
+    addressSecondLine: user.addressSecondLine,
+    townOrCity: user.townOrCity,
+    county: user.county,
+    countryOfResidence: user.countryOfResidence,
+    language: user.language || 'English',
+    currency: user.currency || 'USD',
+    maximumBet: user.maximumBet,
+    limitPerDay: user.limitPerDay,
+    maxDailyStake: user.maxDailyStake,
+    weeklyMaxStake: user.weeklyMaxStake,
+    maximumLoss: user.maximumLoss,
+    creditCardNumber: user.creditCardNumber,
+    expiryDate: user.expiryDate,
+    cvrNumber: user.cvrNumber,
     balance: user.balance,
-    balanceDisplay: user.balanceDisplay
+    balanceDisplay: user.balanceDisplay,
+    passwordSet: Boolean(user.passwordSet)
     };
+    syncSettingsFromUser();
     registerWithSocket();
     render();
+}
+
+function syncSettingsFromUser() {
+  startMenuState.settings.values = getDefaultSettingsValues(state.user);
+  startMenuState.settings.error = '';
+  startMenuState.settings.mode = 'view';
+}
+
+async function refreshUserProfile() {
+  if (!state.user || !state.user.userId) return;
+  try {
+    const res = await fetch(`/api/auth/profile?userId=${encodeURIComponent(state.user.userId)}`);
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload.message || 'Failed to load profile');
+    if (payload && payload.user) {
+      setLoggedInUser(payload.user);
+    }
+  } catch (err) {
+    console.warn('Profile refresh failed', err);
+  }
 }
 
 function handleMenuLogout() {
@@ -2545,6 +3043,13 @@ function handleSignOut() {
   startMenuState.username.value = '';
   startMenuState.username.token = null;
   startMenuState.play.code = '';
+  startMenuState.password = getDefaultPasswordChallenge();
+  startMenuState.settings = {
+    mode: 'view',
+    values: getDefaultSettingsValues(),
+    loading: false,
+    error: ''
+  };
   showStartMenuShell('landing');
   toast('Signed out.');
   render();

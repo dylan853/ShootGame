@@ -9,7 +9,8 @@ const {
   getUserByUsername,
   setUserUsername,
   getUserById,
-  penniesToDisplay
+  penniesToDisplay,
+  updateUserSettings
 } = require('./db');
 const { sendSystemEmail } = require('./emailService');
 
@@ -22,15 +23,42 @@ fs.mkdirSync(creditCardDir, { recursive: true });
 
 const APP_URL = process.env.APP_URL || process.env.CLIENT_ORIGIN || 'https://shoot.poker';
 const PUBLIC_BASE_URL = APP_URL || '';
+const LOGIN_CHALLENGES = new Map();
+const CHALLENGE_TTL_MS = 10 * 60 * 1000;
 
 function sanitizeUser(user) {
   if (!user) return null;
   return {
     userId: user.id,
     username: user.username,
+    aliasName: user.alias_name || user.username || null,
     email: user.email,
+    phone: user.phone,
+    firstName: user.first_name,
+    secondName: user.second_name,
+    dateOfBirth: user.date_of_birth,
+    identityNumber: user.identity_number,
+    identityType: user.identity_type,
+    country: user.country,
+    houseNameOrNumber: user.house_name_or_number,
+    addressFirstLine: user.address_first_line,
+    addressSecondLine: user.address_second_line,
+    townOrCity: user.town_or_city,
+    county: user.county,
+    countryOfResidence: user.country_of_residence,
+    language: user.language || 'English',
+    currency: user.currency || 'USD',
+    maximumBet: user.maximum_bet,
+    limitPerDay: user.limit_per_day || user.max_daily_stake,
+    maxDailyStake: user.max_daily_stake || user.limit_per_day,
+    weeklyMaxStake: user.weekly_max_stake,
+    maximumLoss: user.maximum_loss,
+    creditCardNumber: user.credit_card_number,
+    expiryDate: user.expiry_date,
+    cvrNumber: user.cvr_number,
     balance: user.balance,
-    balanceDisplay: penniesToDisplay(user.balance)
+    balanceDisplay: penniesToDisplay(user.balance),
+    passwordSet: Boolean(user.login_password_hash)
   };
 }
 
@@ -306,9 +334,275 @@ async function loginUser({ email, password }) {
   }
   const matches = await bcrypt.compare(password, user.password_hash);
   if (!matches) {
-    throw validationError('Incorrect email or password.');
+    throw validationError('Incorrect email or phone.');
   }
+  const requiresPassword = Boolean(user.login_password_hash);
+  if (!requiresPassword) {
+    return { user: sanitizeUser(user), requiresPassword: false };
+  }
+  const challengeToken = uuidv4();
+  LOGIN_CHALLENGES.set(challengeToken, {
+    userId: user.id,
+    expiresAt: Date.now() + CHALLENGE_TTL_MS
+  });
+  return { requiresPassword: true, challengeToken, userId: user.id };
+}
+
+async function verifyLoginPassword(challengeToken, password) {
+  if (!challengeToken || !password) {
+    throw validationError('Password challenge missing.');
+  }
+  const challenge = LOGIN_CHALLENGES.get(challengeToken);
+  if (!challenge) {
+    throw validationError('Login challenge expired. Please log in again.');
+  }
+  if (challenge.expiresAt < Date.now()) {
+    LOGIN_CHALLENGES.delete(challengeToken);
+    throw validationError('Login challenge expired. Please log in again.');
+  }
+  const user = getUserById(challenge.userId);
+  if (!user || !user.login_password_hash) {
+    LOGIN_CHALLENGES.delete(challengeToken);
+    throw validationError('Login challenge invalid. Please log in again.');
+  }
+  const matches = await bcrypt.compare(password, user.login_password_hash);
+  if (!matches) {
+    throw validationError('Incorrect password.');
+  }
+  LOGIN_CHALLENGES.delete(challengeToken);
   return sanitizeUser(user);
+}
+
+async function updateSettings(userId, updates = {}) {
+  const user = getUserById(userId);
+  if (!user) {
+    throw validationError('User not found.');
+  }
+  const next = {};
+  const nameRegex = /^[A-Za-z-]+$/;
+  const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const phoneRegex = /^\+[\d\s-]{7,20}$/;
+  const expiryRegex = /^(\d{2})\/(\d{2})$/;
+  const digitsRegex = /^\d+$/;
+
+  const ensureAge = (dobString) => {
+    const dob = dobString ? new Date(dobString) : null;
+    if (!dob || Number.isNaN(dob.getTime())) {
+      throw validationError('Date of birth is invalid.');
+    }
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+      age -= 1;
+    }
+    if (age < 18) {
+      throw validationError('You must be 18 or older.');
+    }
+  };
+
+  const maybeAssign = (key, value) => {
+    if (value === undefined) return;
+    next[key] = value === '' ? null : value;
+  };
+
+  if (updates.firstName !== undefined) {
+    const v = (updates.firstName || '').trim();
+    if (v && !nameRegex.test(v)) {
+      throw validationError('First name can only contain letters and "-".');
+    }
+    maybeAssign('firstName', v);
+  }
+  if (updates.secondName !== undefined) {
+    const v = (updates.secondName || '').trim();
+    if (v && !nameRegex.test(v)) {
+      throw validationError('Second name can only contain letters and "-".');
+    }
+    maybeAssign('secondName', v);
+  }
+  if (updates.dateOfBirth !== undefined) {
+    const dob = updates.dateOfBirth;
+    if (dob) ensureAge(dob);
+    maybeAssign('dateOfBirth', dob || null);
+  }
+  if (updates.email !== undefined) {
+    const v = (updates.email || '').trim().toLowerCase();
+    if (v && !emailRegex.test(v)) {
+      throw validationError('Email address is invalid.');
+    }
+    if (v && v !== user.email) {
+      const existing = getUserByEmail(v);
+      if (existing && existing.id !== user.id) {
+        throw validationError('Email already registered.');
+      }
+    }
+    maybeAssign('email', v);
+  }
+  if (updates.phone !== undefined) {
+    const v = (updates.phone || '').trim();
+    if (v && !phoneRegex.test(v)) {
+      throw validationError('Phone number must include country code (starting with +).');
+    }
+    maybeAssign('phone', v);
+  }
+  if (updates.identityNumber !== undefined) {
+    maybeAssign('identityNumber', (updates.identityNumber || '').trim());
+  }
+  if (updates.identityType !== undefined) {
+    maybeAssign('identityType', (updates.identityType || '').trim());
+  }
+  if (updates.country !== undefined) {
+    maybeAssign('country', (updates.country || '').trim());
+  }
+  if (updates.houseNameOrNumber !== undefined) {
+    maybeAssign('houseNameOrNumber', (updates.houseNameOrNumber || '').trim());
+  }
+  if (updates.addressFirstLine !== undefined) {
+    maybeAssign('addressFirstLine', (updates.addressFirstLine || '').trim());
+  }
+  if (updates.addressSecondLine !== undefined) {
+    maybeAssign('addressSecondLine', (updates.addressSecondLine || '').trim());
+  }
+  if (updates.townOrCity !== undefined) {
+    maybeAssign('townOrCity', (updates.townOrCity || '').trim());
+  }
+  if (updates.county !== undefined) {
+    maybeAssign('county', (updates.county || '').trim());
+  }
+  if (updates.countryOfResidence !== undefined) {
+    maybeAssign('countryOfResidence', (updates.countryOfResidence || '').trim());
+  }
+  if (updates.maximumBet !== undefined) {
+    const v = (updates.maximumBet || '').trim();
+    if (v && !digitsRegex.test(v)) {
+      throw validationError('Maximum bet must be digits only.');
+    }
+    maybeAssign('maximumBet', v);
+  }
+  if (updates.limitPerDay !== undefined) {
+    const v = (updates.limitPerDay || '').trim();
+    if (v && !digitsRegex.test(v)) {
+      throw validationError('Limit per day must be digits only.');
+    }
+    maybeAssign('limitPerDay', v);
+    maybeAssign('maxDailyStake', v);
+  }
+  if (updates.maxDailyStake !== undefined) {
+    const v = (updates.maxDailyStake || '').trim();
+    if (v && !digitsRegex.test(v)) {
+      throw validationError('Max daily stake must be digits only.');
+    }
+    maybeAssign('maxDailyStake', v);
+  }
+  if (updates.weeklyMaxStake !== undefined) {
+    const v = (updates.weeklyMaxStake || '').trim();
+    if (v && !digitsRegex.test(v)) {
+      throw validationError('Weekly max stake must be digits only.');
+    }
+    maybeAssign('weeklyMaxStake', v);
+  }
+  if (updates.maximumLoss !== undefined) {
+    const v = (updates.maximumLoss || '').trim();
+    if (v && !digitsRegex.test(v)) {
+      throw validationError('Maximum loss must be digits only.');
+    }
+    maybeAssign('maximumLoss', v);
+  }
+  if (updates.creditCardNumber !== undefined) {
+    const v = (updates.creditCardNumber || '').trim();
+    if (v && !digitsRegex.test(v)) {
+      throw validationError('Credit card number must be digits only.');
+    }
+    maybeAssign('creditCardNumber', v);
+  }
+  if (updates.expiryDate !== undefined) {
+    const v = (updates.expiryDate || '').trim();
+    if (v) {
+      const m = v.match(expiryRegex);
+      if (!m) {
+        throw validationError('Expiry date must be MM/YY.');
+      }
+      const mm = Number(m[1]);
+      const yy = Number(m[2]);
+      if (mm < 1 || mm > 12) {
+        throw validationError('Expiry month must be 01-12.');
+      }
+      if (yy < 26) {
+        throw validationError('Expiry year must be 26 or later.');
+      }
+    }
+    maybeAssign('expiryDate', v);
+  }
+  if (updates.cvrNumber !== undefined) {
+    const v = (updates.cvrNumber || '').trim();
+    if (v && !/^\d{3}$/.test(v)) {
+      throw validationError('CVR number must be exactly 3 digits.');
+    }
+    maybeAssign('cvrNumber', v);
+  }
+  if (updates.language !== undefined) {
+    const allowedLanguages = ['English', 'Spanish', 'French', 'German', 'Italian', 'Danish'];
+    const v = (updates.language || '').trim() || 'English';
+    if (!allowedLanguages.includes(v)) {
+      throw validationError('Language is not supported.');
+    }
+    maybeAssign('language', v);
+  }
+  if (updates.currency !== undefined) {
+    const allowedCurrencies = ['USD', 'EUR', 'GBP'];
+    const v = (updates.currency || '').trim().toUpperCase() || 'USD';
+    if (!allowedCurrencies.includes(v)) {
+      throw validationError('Currency is not supported.');
+    }
+    maybeAssign('currency', v);
+  }
+
+  let desiredUsername = updates.username;
+  let desiredAlias = updates.aliasName;
+  if (desiredAlias && !desiredUsername) {
+    desiredUsername = desiredAlias;
+  }
+  if (desiredUsername && !desiredAlias) {
+    desiredAlias = desiredUsername;
+  }
+  if (desiredUsername !== undefined) {
+    const trimmed = desiredUsername ? desiredUsername.trim() : '';
+    if (!trimmed) {
+      throw validationError('Username cannot be empty.');
+    }
+    if (trimmed.length < 3 || trimmed.length > 18 || !/^[A-Za-z0-9_]+$/.test(trimmed)) {
+      throw validationError('Username can contain letters, numbers, underscores (3-18 chars).');
+    }
+    const existing = getUserByUsername(trimmed);
+    if (existing && existing.id !== user.id) {
+      throw validationError('Username already taken.');
+    }
+    maybeAssign('username', trimmed);
+    maybeAssign('aliasName', desiredAlias || trimmed);
+  } else if (desiredAlias !== undefined) {
+    const trimmed = desiredAlias ? desiredAlias.trim() : '';
+    if (trimmed) {
+      const existing = getUserByUsername(trimmed);
+      if (existing && existing.id !== user.id) {
+        throw validationError('Alias/username already taken.');
+      }
+      maybeAssign('username', trimmed);
+      maybeAssign('aliasName', trimmed);
+    }
+  }
+
+  if (updates.password !== undefined) {
+    const pass = updates.password || '';
+    if (pass.trim()) {
+      if (pass.length < 6) {
+        throw validationError('Password must be at least 6 characters.');
+      }
+      next.loginPasswordHash = await bcrypt.hash(pass, 10);
+    }
+  }
+
+  const updated = updateUserSettings(userId, next);
+  return sanitizeUser(updated);
 }
 
 function getUserProfile(userId) {
@@ -322,7 +616,9 @@ module.exports = {
   verifyToken,
   chooseUsername,
   loginUser,
+  verifyLoginPassword,
   getUserProfile,
+  updateSettings,
   sanitizeUser
 };
 

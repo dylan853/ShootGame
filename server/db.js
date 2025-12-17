@@ -26,7 +26,10 @@ function createModernUsersTable() {
       phone TEXT,
       country TEXT,
       password_hash TEXT,
+      login_password_hash TEXT,
       identity_image_path TEXT,
+      identity_number TEXT,
+      identity_type TEXT,
       house_name_or_number TEXT,
       address_first_line TEXT,
       address_second_line TEXT,
@@ -35,12 +38,18 @@ function createModernUsersTable() {
       country_of_residence TEXT,
       maximum_bet TEXT,
       limit_per_day TEXT,
+      max_daily_stake TEXT,
+      weekly_max_stake TEXT,
       maximum_loss TEXT,
       credit_card_number TEXT,
       expiry_date TEXT,
       cvr_number TEXT,
       bill_image_path TEXT,
       credit_card_image_path TEXT,
+      language TEXT,
+      currency TEXT,
+      alias_name TEXT,
+      avatar_url TEXT,
       extra_data TEXT,
       email_verified INTEGER NOT NULL DEFAULT 0,
       verification_token TEXT,
@@ -90,7 +99,10 @@ function ensureUserTable() {
   ensureColumn('phone', 'phone TEXT');
   ensureColumn('country', 'country TEXT');
   ensureColumn('password_hash', 'password_hash TEXT');
+  ensureColumn('login_password_hash', 'login_password_hash TEXT');
   ensureColumn('identity_image_path', 'identity_image_path TEXT');
+  ensureColumn('identity_number', 'identity_number TEXT');
+  ensureColumn('identity_type', 'identity_type TEXT');
   ensureColumn('house_name_or_number', 'house_name_or_number TEXT');
   ensureColumn('address_first_line', 'address_first_line TEXT');
   ensureColumn('address_second_line', 'address_second_line TEXT');
@@ -99,12 +111,18 @@ function ensureUserTable() {
   ensureColumn('country_of_residence', 'country_of_residence TEXT');
   ensureColumn('maximum_bet', 'maximum_bet TEXT');
   ensureColumn('limit_per_day', 'limit_per_day TEXT');
+  ensureColumn('max_daily_stake', 'max_daily_stake TEXT');
+  ensureColumn('weekly_max_stake', 'weekly_max_stake TEXT');
   ensureColumn('maximum_loss', 'maximum_loss TEXT');
   ensureColumn('credit_card_number', 'credit_card_number TEXT');
   ensureColumn('expiry_date', 'expiry_date TEXT');
   ensureColumn('cvr_number', 'cvr_number TEXT');
   ensureColumn('bill_image_path', 'bill_image_path TEXT');
   ensureColumn('credit_card_image_path', 'credit_card_image_path TEXT');
+  ensureColumn('language', 'language TEXT');
+  ensureColumn('currency', 'currency TEXT');
+  ensureColumn('alias_name', 'alias_name TEXT');
+  ensureColumn('avatar_url', 'avatar_url TEXT');
   ensureColumn('extra_data', 'extra_data TEXT');
   ensureColumn('email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0');
   ensureColumn('verification_token', 'verification_token TEXT');
@@ -130,7 +148,10 @@ const insertUserStmt = db.prepare(`
     phone,
     country,
     password_hash,
+    login_password_hash,
     identity_image_path,
+    identity_number,
+    identity_type,
     house_name_or_number,
     address_first_line,
     address_second_line,
@@ -139,12 +160,18 @@ const insertUserStmt = db.prepare(`
     country_of_residence,
     maximum_bet,
     limit_per_day,
+    max_daily_stake,
+    weekly_max_stake,
     maximum_loss,
     credit_card_number,
     expiry_date,
     cvr_number,
     bill_image_path,
     credit_card_image_path,
+    language,
+    currency,
+    alias_name,
+    avatar_url,
     extra_data,
     email_verified,
     verification_token,
@@ -161,7 +188,10 @@ const insertUserStmt = db.prepare(`
     @phone,
     @country,
     @passwordHash,
+    @loginPasswordHash,
     @identityImagePath,
+    @identityNumber,
+    @identityType,
     @houseNameOrNumber,
     @addressFirstLine,
     @addressSecondLine,
@@ -170,12 +200,18 @@ const insertUserStmt = db.prepare(`
     @countryOfResidence,
     @maximumBet,
     @limitPerDay,
+    @maxDailyStake,
+    @weeklyMaxStake,
     @maximumLoss,
     @creditCardNumber,
     @expiryDate,
     @cvrNumber,
     @billImagePath,
     @creditCardImagePath,
+    @language,
+    @currency,
+    @aliasName,
+    @avatarUrl,
     @extraData,
     @emailVerified,
     @verificationToken,
@@ -185,7 +221,9 @@ const insertUserStmt = db.prepare(`
 `);
 const updateBalanceStmt = db.prepare('UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
 const setBalanceStmt = db.prepare('UPDATE users SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
-const updateUsernameStmt = db.prepare('UPDATE users SET username = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+const updateUsernameStmt = db.prepare(
+  'UPDATE users SET username = ?, alias_name = COALESCE(?, alias_name), status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+);
 const markVerifiedStmt = db.prepare('UPDATE users SET email_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
 const clearVerificationTokenStmt = db.prepare('UPDATE users SET verification_token = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
 const updateVerificationTokenStmt = db.prepare('UPDATE users SET verification_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
@@ -209,6 +247,8 @@ function createPendingUser({
   country,
   passwordHash,
   identityImagePath,
+  identityNumber,
+  identityType,
   houseNameOrNumber,
   addressFirstLine,
   addressSecondLine,
@@ -217,12 +257,18 @@ function createPendingUser({
   countryOfResidence,
   maximumBet,
   limitPerDay,
+  maxDailyStake,
+  weeklyMaxStake,
   maximumLoss,
   creditCardNumber,
   expiryDate,
   cvrNumber,
   billImagePath,
   creditCardImagePath,
+  language,
+  currency,
+  aliasName,
+  avatarUrl,
   extraData,
   verificationToken
 }) {
@@ -237,7 +283,10 @@ function createPendingUser({
     phone,
     country,
     passwordHash,
+    loginPasswordHash: null,
     identityImagePath,
+    identityNumber: identityNumber || null,
+    identityType: identityType || null,
     houseNameOrNumber,
     addressFirstLine,
     addressSecondLine,
@@ -246,12 +295,18 @@ function createPendingUser({
     countryOfResidence,
     maximumBet,
     limitPerDay,
+    maxDailyStake: maxDailyStake || limitPerDay || null,
+    weeklyMaxStake: weeklyMaxStake || null,
     maximumLoss,
     creditCardNumber,
     expiryDate,
     cvrNumber,
     billImagePath,
     creditCardImagePath,
+    language: language || 'English',
+    currency: currency || 'USD',
+    aliasName: aliasName || null,
+    avatarUrl: avatarUrl || null,
     extraData,
     emailVerified: 0,
     verificationToken,
@@ -282,7 +337,7 @@ function getUserByVerificationToken(token) {
 }
 
 function setUserUsername(userId, username, status = 'active') {
-  updateUsernameStmt.run(username, status, userId);
+  updateUsernameStmt.run(username, username, status, userId);
   clearVerificationTokenStmt.run(userId);
   markVerifiedStmt.run(userId);
   return getUserById(userId);
@@ -316,6 +371,60 @@ function setBalance(userId, pennies) {
   return getUserById(userId);
 }
 
+function updateUserSettings(userId, updates = {}) {
+  if (!userId) {
+    throw new Error('Missing user id');
+  }
+  const allowedColumns = {
+    username: 'username',
+    aliasName: 'alias_name',
+    firstName: 'first_name',
+    secondName: 'second_name',
+    dateOfBirth: 'date_of_birth',
+    identityNumber: 'identity_number',
+    identityType: 'identity_type',
+    email: 'email',
+    phone: 'phone',
+    country: 'country',
+    houseNameOrNumber: 'house_name_or_number',
+    addressFirstLine: 'address_first_line',
+    addressSecondLine: 'address_second_line',
+    townOrCity: 'town_or_city',
+    county: 'county',
+    countryOfResidence: 'country_of_residence',
+    maximumBet: 'maximum_bet',
+    limitPerDay: 'limit_per_day',
+    maxDailyStake: 'max_daily_stake',
+    weeklyMaxStake: 'weekly_max_stake',
+    maximumLoss: 'maximum_loss',
+    creditCardNumber: 'credit_card_number',
+    expiryDate: 'expiry_date',
+    cvrNumber: 'cvr_number',
+    language: 'language',
+    currency: 'currency',
+    passwordHash: 'password_hash',
+    loginPasswordHash: 'login_password_hash',
+    avatarUrl: 'avatar_url'
+  };
+  const sets = [];
+  const params = { userId };
+  Object.entries(updates || {}).forEach(([key, value]) => {
+    const column = allowedColumns[key];
+    if (!column) return;
+    sets.push(`${column} = @${key}`);
+    params[key] = value;
+  });
+  if (!sets.length) return getUserById(userId);
+  sets.push('updated_at = CURRENT_TIMESTAMP');
+  const sql = `UPDATE users SET ${sets.join(', ')} WHERE id = @userId`;
+  const stmt = db.prepare(sql);
+  const info = stmt.run(params);
+  if (info.changes === 0) {
+    throw new Error('User not found');
+  }
+  return getUserById(userId);
+}
+
 module.exports = {
   db,
   createPendingUser,
@@ -329,6 +438,7 @@ module.exports = {
   updateUserStatus,
   applyBalanceDelta,
   setBalance,
+  updateUserSettings,
   penniesToDisplay,
   STARTING_BALANCE
 };
