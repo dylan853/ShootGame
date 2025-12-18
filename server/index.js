@@ -39,13 +39,73 @@ const {
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
 
+const BLOCKED_COUNTRIES = new Set([
+  'AU',
+  'AT',
+  'KN',
+  'FR',
+  'DE',
+  'NL',
+  'ES',
+  'GB',
+  'US',
+  'KP',
+  'IR',
+  'MM',
+  'CU',
+  'SY',
+  'RU'
+]);
+const DEV_ALLOWLIST_IP = '217.155.49.78';
+
 const app = express();
+app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 
 const tmpUploadDir = path.join(__dirname, 'uploads', 'tmp');
 fs.mkdirSync(tmpUploadDir, { recursive: true });
 const upload = multer({ dest: tmpUploadDir });
+
+// Geo-blocking middleware
+app.use(async (req, res, next) => {
+  const rawIp =
+    (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() ||
+    req.ip ||
+    '';
+  const ip = rawIp.replace('::ffff:', '');
+
+  if (!ip || ip === DEV_ALLOWLIST_IP) {
+    return next();
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const response = await fetch(`https://api.country.is/${encodeURIComponent(ip)}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) return next();
+    const data = await response.json();
+    const country = (data.country || '').toUpperCase();
+
+    if (BLOCKED_COUNTRIES.has(country)) {
+      res
+        .status(403)
+        .send(
+          'This IP is blocked due to restrictions of the gaming licence, your region will be available in the future.'
+        );
+      return;
+    }
+  } catch (err) {
+    // Fail open on lookup errors
+    return next();
+  }
+
+  next();
+});
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
