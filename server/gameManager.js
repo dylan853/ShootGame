@@ -821,7 +821,7 @@ function setDealerStake(io, socketId, amount) {
   if (wasFaceDown) {
     addMessage(game, `${player.username} keeps the dealer card face down and sets the stake at ${penniesToDisplay(parsed)}.`);
   } else {
-    addMessage(game, `${player.username} sets the stake at ${penniesToDisplay(parsed)} and feeds the pot.`);
+  addMessage(game, `${player.username} sets the stake at ${penniesToDisplay(parsed)} and feeds the pot.`);
   }
   emitState(io, game);
 }

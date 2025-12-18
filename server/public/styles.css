@@ -270,6 +270,32 @@ body::before {
   z-index: 4;
 }
 
+#start-menu-cashier-modal img {
+  width: min(45vw, 360px);
+}
+
+#start-menu-cashier-modal {
+  justify-content: flex-end;
+  padding-right: 0vw;
+  z-index: 4;
+}
+
+#start-menu-cashier-modal .start-menu-input,
+#start-menu-cashier-modal .start-menu-input::placeholder,
+#start-menu-cashier-modal .start-menu-settings-display {
+  color: #fff !important;
+}
+
+#start-menu-cashier-modal .start-menu-hotspot {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+#start-menu-cashier-modal .start-menu-hotspot:hover,
+#start-menu-cashier-modal .start-menu-hotspot:focus {
+  background: transparent !important;
+}
+
 .start-menu-rules-open #start-menu-overlay-layer,
 .start-menu-rules-open #start-menu-image,
 .start-menu-rules-open .start-menu-close {
@@ -337,6 +363,28 @@ body::before {
 }
 
 .start-menu-settings-open #start-menu-settings-modal {
+  pointer-events: auto;
+}
+
+#start-menu-cashier-close {
+  display: none;
+}
+
+.start-menu-cashier-open .start-menu-layer > * {
+  pointer-events: none !important;
+}
+
+.start-menu-cashier-open #start-menu-cashier-modal {
+  pointer-events: auto;
+}
+
+.start-menu-cashier-open #start-menu-overlay-layer,
+.start-menu-cashier-open #start-menu-image,
+.start-menu-cashier-open .start-menu-close {
+  pointer-events: none !important;
+}
+
+.start-menu-cashier-open #start-menu-cashier-modal {
   pointer-events: auto;
 }
 
@@ -423,6 +471,17 @@ body.table-crowded .player-cards {
   padding: 2rem;
   text-align: center;
   z-index: 999;
+}
+
+.rotate-overlay.show {
+  display: flex;
+}
+
+body.rotate-block #app,
+body.rotate-block #start-menu-root {
+  filter: blur(4px);
+  pointer-events: none;
+  user-select: none;
 }
 
 .rotate-card {
@@ -1888,18 +1947,6 @@ body.table-crowded:not(.angled-view) .player-cards[data-view-seat="5"] {
 
   .deck span {
     font-size: 0.65rem;
-  }
-}
-
-@media (orientation: portrait) and (max-width: 1024px) {
-  .rotate-overlay {
-    display: flex;
-  }
-
-  #app {
-    filter: blur(4px);
-    pointer-events: none;
-    user-select: none;
   }
 }
 

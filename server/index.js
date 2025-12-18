@@ -66,7 +66,7 @@ app.post(
       message: 'Registration received. Please check your email to continue.',
       user: {
         email: user.email,
-        balanceDisplay: user.balanceDisplay
+      balanceDisplay: user.balanceDisplay
       },
       verificationToken
     });

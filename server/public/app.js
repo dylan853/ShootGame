@@ -217,9 +217,21 @@ const startMenuRefs = {
   settingsOverlay: document.getElementById('start-menu-settings-overlay'),
   settingsImage: document.getElementById('start-menu-settings-image'),
   settingsClose: document.getElementById('start-menu-settings-close'),
+  cashierModal: document.getElementById('start-menu-cashier-modal'),
+  cashierOverlay: document.getElementById('start-menu-cashier-overlay'),
+  cashierImage: document.getElementById('start-menu-cashier-image'),
+  cashierClose: document.getElementById('start-menu-cashier-close'),
   closeBtn: document.getElementById('start-menu-close-btn'),
   appShell: document.getElementById('app')
 };
+
+const orientationRefs = {
+  overlay: document.getElementById('rotate-overlay'),
+  title: document.querySelector('#rotate-overlay h2'),
+  message: document.querySelector('#rotate-overlay p')
+};
+
+const MOBILE_MAX_WIDTH = 1024;
 
 function getDefaultRegisterForm() {
   return {
@@ -312,6 +324,12 @@ const startMenuState = {
     loading: false,
     error: ''
   },
+  cashier: {
+    amount: '',
+    mirroredAmount: '',
+    priceDisplay: '',
+    message: ''
+  },
   verificationToken: null,
   username: {
     value: '',
@@ -322,10 +340,80 @@ const startMenuState = {
   }
 };
 
+function isMobileViewport() {
+  return window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
+}
+
+function isLandscapeOrientation() {
+  return window.matchMedia('(orientation: landscape)').matches;
+}
+
+function getUserCurrency() {
+  return state.user?.currency || startMenuState.settings.values.currency || '';
+}
+
+function getCurrencyRate(currency) {
+  const cur = (currency || '').toUpperCase();
+  if (cur === 'EUR') return 0.85;
+  if (cur === 'GBP') return 0.75;
+  return 1; // default USD
+}
+
+function updateOrientationLock() {
+  if (!orientationRefs.overlay) return;
+  const isMobile = isMobileViewport();
+  const landscape = isLandscapeOrientation();
+  const inStartMenu = startMenuState.active;
+  let shouldShow = false;
+  let title = '';
+  let message = '';
+
+  if (isMobile) {
+    if (inStartMenu) {
+      // Start menus: force portrait
+      if (landscape) {
+        shouldShow = true;
+        title = 'Portrait required';
+        message = 'Turn your phone to portrait to use the menus.';
+      }
+    } else {
+      // Game/lobby: force landscape
+      if (!landscape) {
+        shouldShow = true;
+        title = 'Landscape required';
+        message = 'Turn your phone to landscape to play.';
+      }
+    }
+  }
+
+  if (orientationRefs.title) {
+    orientationRefs.title.textContent = title;
+  }
+  if (orientationRefs.message) {
+    orientationRefs.message.textContent = message;
+  }
+
+  orientationRefs.overlay.classList.remove('hidden');
+  orientationRefs.overlay.classList.toggle('show', shouldShow);
+  document.body.classList.toggle('rotate-block', shouldShow);
+}
+
+function handleOrientationChange() {
+  updateOrientationLock();
+}
+
+function initOrientationEnforcement() {
+  if (!orientationRefs.overlay) return;
+  window.addEventListener('resize', handleOrientationChange);
+  window.addEventListener('orientationchange', handleOrientationChange);
+  updateOrientationLock();
+}
+
 init();
 
 async function init() {
   initStartMenu();
+  initOrientationEnforcement();
   wireEvents();
   await loadConfig();
   hydrateUser();
@@ -379,6 +467,13 @@ function wireEvents() {
     }
   });
   startMenuRefs.settingsImage?.addEventListener('load', renderSettingsOverlay);
+  startMenuRefs.cashierClose?.addEventListener('click', closeStartMenuCashierModal);
+  startMenuRefs.cashierModal?.addEventListener('click', (event) => {
+    if (event.target === startMenuRefs.cashierModal) {
+      closeStartMenuCashierModal();
+    }
+  });
+  startMenuRefs.cashierImage?.addEventListener('load', renderCashierOverlay);
   startMenuRefs.closeBtn?.addEventListener('click', () => {
     const target =
       startMenuRefs.closeBtn?.getAttribute('data-target') ||
@@ -639,6 +734,7 @@ function renderStartMenuOverlays(screenName, width, height) {
       addMenuHotspot([108, 467, 163, 499], () => setStartMenuScreen('play'), { width, height });
       addMenuHotspot([693, 465, 791, 499], handleMenuLogout, { width, height });
       addMenuHotspot([753, 18, 779, 42], openStartMenuSettingsModal, { width, height });
+      addMenuHotspot([721, 20, 743, 41], openStartMenuCashierModal, { width, height });
       break;
     case 'play':
       addMenuInput('play.code', [306, 188, 515, 218], {
@@ -1061,6 +1157,26 @@ function closeStartMenuComplianceModal() {
   startMenuRefs.complianceModal?.classList.add('hidden');
 }
 
+function resetCashierState() {
+  startMenuState.cashier.amount = '';
+  startMenuState.cashier.mirroredAmount = '';
+  startMenuState.cashier.priceDisplay = '';
+  startMenuState.cashier.message = '';
+}
+
+function openStartMenuCashierModal() {
+  resetCashierState();
+  renderCashierOverlay();
+  startMenuRefs.root?.classList.add('start-menu-cashier-open');
+  startMenuRefs.cashierModal?.classList.remove('hidden');
+}
+
+function closeStartMenuCashierModal() {
+  resetCashierState();
+  startMenuRefs.root?.classList.remove('start-menu-cashier-open');
+  startMenuRefs.cashierModal?.classList.add('hidden');
+}
+
 async function openStartMenuSettingsModal() {
   startMenuState.settings.loading = true;
   syncSettingsFromUser();
@@ -1244,8 +1360,8 @@ function renderSettingsOverlay() {
       } else {
         addDisplay(key);
       }
-      return;
-    }
+    return;
+  }
     if (isEdit) {
       if (key === 'language') {
         addInput(key, { type: 'select', options: SETTINGS_LANGUAGE_OPTIONS });
@@ -1307,6 +1423,159 @@ function renderSettingsOverlay() {
     errorBox.style.zIndex = '14';
     overlay.appendChild(errorBox);
   }
+}
+
+function handleCashierAmountInput(event) {
+  const raw = event.target.value || '';
+  const digits = raw.replace(/\D/g, '');
+  startMenuState.cashier.amount = digits;
+  updateCashierComputed();
+}
+
+function handleCashierClosedClick() {
+  startMenuState.cashier.message = 'Closed due to refurbishment';
+  updateCashierComputed();
+}
+
+function updateCashierComputed() {
+  const overlay = startMenuRefs.cashierOverlay;
+  if (!overlay) return;
+  const userCurrency = getUserCurrency();
+  const effectiveCurrency = userCurrency || 'USD';
+  const rate = getCurrencyRate(effectiveCurrency);
+  const amountValue = Number.parseInt(startMenuState.cashier.amount || '0', 10) || 0;
+  const mirrorVal = amountValue ? String(amountValue) : '';
+  const priceVal = (amountValue * rate).toFixed(2);
+  const priceDisplay = `${priceVal} ${effectiveCurrency}`;
+  startMenuState.cashier.mirroredAmount = mirrorVal;
+  startMenuState.cashier.priceDisplay = priceDisplay;
+
+  const balanceEl = overlay.querySelector('[data-cashier="balance"]');
+  if (balanceEl) {
+    const bal = state.user?.balanceDisplay || (state.user?.balance !== undefined ? String(state.user.balance) : '?');
+    balanceEl.textContent = bal || '?';
+  }
+
+  const amountInput = overlay.querySelector('[data-cashier="amount"]');
+  if (amountInput) {
+    amountInput.value = startMenuState.cashier.amount;
+  }
+
+  const mirrorInput = overlay.querySelector('[data-cashier="mirror"]');
+  if (mirrorInput) {
+    mirrorInput.value = mirrorVal;
+  }
+
+  const priceInput = overlay.querySelector('[data-cashier="price"]');
+  if (priceInput) {
+    priceInput.value = priceDisplay;
+  }
+
+  const cardEl = overlay.querySelector('[data-cashier="card"]');
+  if (cardEl) {
+    const cardNumber =
+      state.user?.creditCardNumber ||
+      state.user?.credit_card_number ||
+      startMenuState.settings.values.creditCardNumber ||
+      '';
+    const cardText = cardNumber || '?';
+    cardEl.textContent = cardText;
+  }
+
+  const messageEl = overlay.querySelector('[data-cashier="message"]');
+  if (messageEl) {
+    messageEl.textContent = startMenuState.cashier.message || '';
+    messageEl.style.setProperty('color', '#d00', 'important');
+    messageEl.style.fontWeight = '700';
+    messageEl.style.textAlign = 'center';
+    messageEl.style.whiteSpace = 'nowrap';
+  }
+}
+
+function renderCashierOverlay() {
+  const overlay = startMenuRefs.cashierOverlay;
+  const img = startMenuRefs.cashierImage;
+  if (!overlay || !img) return;
+
+  const baseWidth = img.naturalWidth || MENU_COORDINATE_BASE.width;
+  const baseHeight = img.naturalHeight || MENU_COORDINATE_BASE.height;
+  overlay.innerHTML = '';
+
+  const makeDisplay = (rect, datasetKey) => {
+    const el = document.createElement('div');
+    el.className = 'start-menu-settings-display';
+    if (datasetKey) el.dataset.cashier = datasetKey;
+    applyMenuRect(el, rect, baseWidth, baseHeight);
+    overlay.appendChild(el);
+    return el;
+  };
+
+  // Balance display
+  makeDisplay([107, 91, 243, 126], 'balance');
+
+  // Amount input (digits only)
+  const amountInput = document.createElement('input');
+  amountInput.type = 'tel';
+  amountInput.inputMode = 'numeric';
+  amountInput.className = 'start-menu-input';
+  amountInput.dataset.cashier = 'amount';
+  applyMenuRect(amountInput, [107, 292, 243, 324], baseWidth, baseHeight);
+  amountInput.addEventListener('input', handleCashierAmountInput);
+  overlay.appendChild(amountInput);
+
+  // Credit card or currency message
+  makeDisplay([24, 446, 330, 482], 'card');
+
+  // Mirrored amount (readonly)
+  const mirrorInput = document.createElement('input');
+  mirrorInput.type = 'text';
+  mirrorInput.readOnly = true;
+  mirrorInput.className = 'start-menu-input';
+  mirrorInput.dataset.cashier = 'mirror';
+  applyMenuRect(mirrorInput, [24, 540, 160, 576], baseWidth, baseHeight);
+  overlay.appendChild(mirrorInput);
+
+  // Price display
+  const priceInput = document.createElement('input');
+  priceInput.type = 'text';
+  priceInput.readOnly = true;
+  priceInput.className = 'start-menu-input';
+  priceInput.dataset.cashier = 'price';
+  applyMenuRect(priceInput, [192, 540, 329, 576], baseWidth, baseHeight);
+  overlay.appendChild(priceInput);
+
+  // Message above buttons (single line, wider, slightly higher)
+  makeDisplay([50, 795, 300, 830], 'message');
+
+  // Buy hotspot
+  const buyBtn = document.createElement('button');
+  buyBtn.type = 'button';
+  buyBtn.className = 'start-menu-hotspot';
+  applyMenuRect(buyBtn, [91, 832, 157, 863], baseWidth, baseHeight);
+  buyBtn.style.background = 'transparent';
+  buyBtn.style.opacity = '1';
+  buyBtn.addEventListener('click', handleCashierClosedClick);
+  overlay.appendChild(buyBtn);
+
+  // Sell hotspot
+  const sellBtn = document.createElement('button');
+  sellBtn.type = 'button';
+  sellBtn.className = 'start-menu-hotspot';
+  applyMenuRect(sellBtn, [190, 832, 256, 863], baseWidth, baseHeight);
+  sellBtn.style.background = 'transparent';
+  sellBtn.style.opacity = '1';
+  sellBtn.addEventListener('click', handleCashierClosedClick);
+  overlay.appendChild(sellBtn);
+
+  // Close hotspot
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'start-menu-hotspot';
+  applyMenuRect(closeBtn, [9, 864, 62, 885], baseWidth, baseHeight);
+  closeBtn.addEventListener('click', closeStartMenuCashierModal);
+  overlay.appendChild(closeBtn);
+
+  updateCashierComputed();
 }
 
 function addRegisterErrorMessage(width, height) {
@@ -1724,6 +1993,7 @@ function closeStartMenuShell() {
   startMenuRefs.root?.classList.add('hidden');
   document.body.classList.remove('start-menu-active');
   startMenuRefs.appShell?.classList.remove('hidden');
+  updateOrientationLock();
 }
 
 function showStartMenuShell(screen = 'landing') {
@@ -1732,6 +2002,7 @@ function showStartMenuShell(screen = 'landing') {
   document.body.classList.add('start-menu-active');
   startMenuRefs.appShell?.classList.add('hidden');
   setStartMenuScreen(screen, { force: true });
+  updateOrientationLock();
 }
 async function loadConfig() {
   try {
