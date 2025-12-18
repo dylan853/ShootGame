@@ -92,11 +92,65 @@ app.use(async (req, res, next) => {
     const country = (data.country || '').toUpperCase();
 
     if (BLOCKED_COUNTRIES.has(country)) {
-      res
-        .status(403)
-        .send(
-          'This IP is blocked due to restrictions of the gaming licence, your region will be available in the future.'
-        );
+      res.status(403);
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+      res.type('html').send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Access Restricted</title>
+  <style>
+    :root {
+      color-scheme: only light;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 30% 30%, #1f2a44, #0f172a 65%);
+      font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      color: #f8fafc;
+      text-align: center;
+      padding: 24px;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 32px 28px;
+      width: min(520px, 100%);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(6px);
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(22px, 3vw, 28px);
+      letter-spacing: 0.3px;
+    }
+    p {
+      margin: 0;
+      font-size: clamp(16px, 2.5vw, 18px);
+      line-height: 1.5;
+      color: #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Access Restricted</h1>
+    <p>This IP is blocked due to restrictions of the gaming licence. Your region will be available in the future.</p>
+  </main>
+</body>
+</html>`);
       return;
     }
   } catch (err) {
