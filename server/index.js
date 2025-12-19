@@ -39,23 +39,24 @@ const {
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-const BLOCKED_COUNTRIES = new Set([
-  'AU',
-  'AT',
-  'KN',
-  'FR',
-  'DE',
-  'NL',
-  'ES',
-  'GB',
-  'US',
-  'KP',
-  'IR',
-  'MM',
-  'CU',
-  'SY',
-  'RU'
-]);
+// const BLOCKED_COUNTRIES = new Set([
+//   'AU',
+//   'AT',
+//   'KN',
+//   'FR',
+//   'DE',
+//   'NL',
+//   'ES',
+//   'GB',
+//   'US',
+//   'KP',
+//   'IR',
+//   'MM',
+//   'CU',
+//   'SY',
+//   'RU'
+// ]);
+const BLOCKED_COUNTRIES = new Set([]);
 const DEV_ALLOWLIST_IP = '217.155.49.78';
 
 const app = express();
