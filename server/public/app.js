@@ -766,6 +766,7 @@ function renderStartMenuOverlays(screenName, width, height) {
       if (!startMenuState.isBlockedCountry) {
         addMenuHotspot([443, 90, 715, 342], () => selectTableType('real'), { width, height });
       }
+      addMenuHotspot([695, 451, 763, 491], () => setStartMenuScreen('authed'), { width, height });
       break;
     case 'play':
       addMenuInput('play.code', [306, 188, 515, 218], {
@@ -787,6 +788,7 @@ function renderStartMenuOverlays(screenName, width, height) {
         // Keep clickable even if code invalid; server will validate
         disabled: false
       });
+      addMenuHotspot([695, 451, 763, 491], () => setStartMenuScreen('authed'), { width, height });
       break;
     case 'password':
       addMenuInput('password.value', [305, 240, 515, 270], {
