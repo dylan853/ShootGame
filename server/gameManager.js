@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { applyBalanceDelta, penniesToDisplay } = require('./db');
+const { applyBalanceDelta, applyRealBalanceDelta, penniesToDisplay } = require('./db');
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
@@ -149,7 +149,9 @@ function roomName(code) {
   return `game:${code}`;
 }
 
-function newPlayerState(user, socketId, seat) {
+function newPlayerState(user, socketId, seat, walletType = 'balance') {
+  const usingReal = walletType === 'real';
+  const walletBalance = usingReal ? user.realBalance : user.balance;
   return {
     userId: user.id,
     username: user.username,
@@ -157,7 +159,7 @@ function newPlayerState(user, socketId, seat) {
     seat,
     ready: false,
     isDealer: false,
-    balance: user.balance,
+    balance: walletBalance,
     cards: [],
     turnsTaken: 0,
     gamesWon: 0,
@@ -266,10 +268,15 @@ function rotateDealer(io, game) {
   io.to(room).emit('dealer-selected', { username: dealerUsername });
 }
 
-function applyBalance(player, deltaPennies) {
+function applyWalletDelta(game, player, deltaPennies) {
   const nextBalance = player.balance + deltaPennies;
   if (nextBalance < 0) {
     throw new Error('Insufficient balance for this action.');
+  }
+  if (game.walletType === 'real') {
+    const updated = applyRealBalanceDelta(player.userId, deltaPennies);
+    player.balance = updated.real_balance;
+    return updated;
   }
   const updated = applyBalanceDelta(player.userId, deltaPennies);
   player.balance = updated.balance;
@@ -295,7 +302,7 @@ function refundCurrentGame(game) {
   if (game.pot <= 0) return;
   game.players.forEach((player) => {
     if (player.roundContribution > 0) {
-      applyBalance(player, player.roundContribution);
+      applyWalletDelta(game, player, player.roundContribution);
       player.roundContribution = 0;
     }
   });
@@ -392,7 +399,7 @@ function collectMinimumBetFromPlayers(game) {
       shortfalls.push(player.username);
       return;
     }
-    applyBalance(player, -amount);
+    applyWalletDelta(game, player, -amount);
     trackContribution(player, amount);
     collected += amount;
     contributors += 1;
@@ -583,6 +590,7 @@ function clearPending(game) {
 function sanitizeGame(game) {
   return {
     code: game.code,
+    walletType: game.walletType || 'balance',
     state: game.state,
     minPlayers: MIN_PLAYERS,
     stakeOptions: STAKE_OPTIONS,
@@ -645,16 +653,17 @@ function emitState(io, game) {
   io.to(roomName(game.code)).emit('game-state', sanitizeGame(game));
 }
 
-function createGame(io, socket, user) {
+function createGame(io, socket, user, { walletType = 'balance' } = {}) {
   if (socketToGame.has(socket.id)) {
     throw new Error('You are already seated at a table.');
   }
   const code = generateGameCode();
-  const player = newPlayerState(user, socket.id, 0);
+  const player = newPlayerState(user, socket.id, 0, walletType);
   const game = {
     code,
     hostId: socket.id,
     createdAt: Date.now(),
+    walletType,
     players: [player],
     dealerIndex: null,
     lastDealerIndex: null,
@@ -681,7 +690,7 @@ function createGame(io, socket, user) {
   return game;
 }
 
-function joinGame(io, socket, user, code) {
+function joinGame(io, socket, user, code, requestedWalletType = 'balance') {
   if (socketToGame.has(socket.id)) {
     throw new Error('You are already in a game.');
   }
@@ -690,6 +699,9 @@ function joinGame(io, socket, user, code) {
   if (!game) {
     throw new Error('Game code not found.');
   }
+  if (game.walletType && game.walletType !== requestedWalletType) {
+    throw new Error('This table uses a different balance type.');
+  }
   if (game.players.length >= MAX_PLAYERS) {
     throw new Error(`This table already has ${MAX_PLAYERS} players.`);
   }
@@ -697,7 +709,7 @@ function joinGame(io, socket, user, code) {
     throw new Error('Game already in progress.');
   }
   const seat = game.players.length;
-  const player = newPlayerState(user, socket.id, seat);
+  const player = newPlayerState(user, socket.id, seat, game.walletType);
   game.players.push(player);
   socketToGame.set(socket.id, game.code);
   socket.join(roomName(game.code));
@@ -710,6 +722,9 @@ function toggleReady(io, socketId, ready) {
   const { game, player } = ensurePlayerContext(socketId);
   if (game.state !== 'lobby') {
     throw new Error('Ready status can only change while in the lobby.');
+  }
+  if (ready && player.balance <= 0) {
+    throw new Error('Insufficient balance to ready up for this table.');
   }
   player.ready = ready;
   player.status = ready ? 'ready' : 'waiting';
@@ -813,7 +828,7 @@ function setDealerStake(io, socketId, amount) {
   if (player.balance < parsed) {
     throw new Error('Insufficient balance to cover the stake.');
   }
-  applyBalance(player, -parsed);
+  applyWalletDelta(game, player, -parsed);
   game.pot += parsed;
   trackContribution(player, parsed);
   game.currentStake = parsed;
@@ -842,7 +857,7 @@ function dealerRevealWithMinimum(io, socketId) {
     throw new Error('Insufficient balance to cover the stake.');
   }
   revealDealerCard(game);
-  applyBalance(player, -stake);
+  applyWalletDelta(game, player, -stake);
   game.pot += stake;
   trackContribution(player, stake);
   game.currentStake = stake;
@@ -882,7 +897,7 @@ function handleStake(io, socketId) {
     throw new Error('Insufficient balance for the minimum stake.');
   }
   const stake = MINIMUM_STAKE;
-  applyBalance(player, -stake);
+  applyWalletDelta(game, player, -stake);
   game.pot += stake;
   trackContribution(player, stake);
   game.state = 'resolving-stake';
@@ -937,13 +952,13 @@ function handleStake(io, socketId) {
         let payout = 0;
         if (game.pot >= stake) {
           game.pot -= stake;
-          applyBalance(player, stake);
+          applyWalletDelta(game, player, stake);
           payout += stake;
 }
         const bonus = Math.min(stake, game.pot);
         if (bonus > 0) {
           game.pot -= bonus;
-          applyBalance(player, bonus);
+          applyWalletDelta(game, player, bonus);
           payout += bonus;
         }
         addMessage(
@@ -1005,7 +1020,7 @@ function handleBet(io, socketId, amount) {
     throw new Error(`Insufficient balance for bet of ${penniesToDisplay(parsed)}.`);
   }
   const stake = parsed;
-  applyBalance(player, -stake);
+  applyWalletDelta(game, player, -stake);
   game.pot += stake;
   trackContribution(player, stake);
   game.state = 'resolving-bet';
@@ -1081,13 +1096,13 @@ function handleBet(io, socketId, amount) {
         let payout = 0;
         if (game.pot >= stake) {
           game.pot -= stake;
-          applyBalance(player, stake);
+          applyWalletDelta(game, player, stake);
           payout += stake;
         }
         const bonus = Math.min(stake, game.pot);
         if (bonus > 0) {
           game.pot -= bonus;
-          applyBalance(player, bonus);
+          applyWalletDelta(game, player, bonus);
           payout += bonus;
         }
         addMessage(
@@ -1140,7 +1155,7 @@ function handleShoot(io, socketId) {
   if (player.balance < shootCost) {
     throw new Error('Insufficient balance to shoot. Consider going all in.');
   }
-  applyBalance(player, -shootCost);
+  applyWalletDelta(game, player, -shootCost);
   game.pot += shootCost;
   trackContribution(player, shootCost);
   game.state = 'resolving-shoot';
@@ -1261,7 +1276,7 @@ function handleAllIn(io, socketId) {
   if (stake <= 0) {
     throw new Error('No balance available to go all in.');
   }
-  applyBalance(player, -stake);
+  applyWalletDelta(game, player, -stake);
   game.pot += stake;
   trackContribution(player, stake);
   game.state = 'resolving-allin';
@@ -1338,13 +1353,13 @@ function handleAllIn(io, socketId) {
         let payout = 0;
         if (game.pot >= stake) {
           game.pot -= stake;
-          applyBalance(player, stake);
+          applyWalletDelta(game, player, stake);
           payout += stake;
         }
         const bonus = Math.min(stake, game.pot);
         if (bonus > 0) {
           game.pot -= bonus;
-          applyBalance(player, bonus);
+          applyWalletDelta(game, player, bonus);
           payout += bonus;
         }
         addMessage(
@@ -1427,7 +1442,7 @@ function pickNextPlayer(game) {
 function endGame(io, game, winnerIndex) {
   const winner = game.players[winnerIndex] || null;
   if (winner && game.pot > 0) {
-    applyBalance(winner, game.pot);
+    applyWalletDelta(game, winner, game.pot);
   }
   if (winner) {
   winner.gamesWon += 1;

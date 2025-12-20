@@ -39,24 +39,24 @@ const {
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-// const BLOCKED_COUNTRIES = new Set([
-//   'AU',
-//   'AT',
-//   'KN',
-//   'FR',
-//   'DE',
-//   'NL',
-//   'ES',
-//   'GB',
-//   'US',
-//   'KP',
-//   'IR',
-//   'MM',
-//   'CU',
-//   'SY',
-//   'RU'
-// ]);
-const BLOCKED_COUNTRIES = new Set([]);
+const BLOCKED_COUNTRIES = new Set([
+  'AU',
+  'AT',
+  'KN',
+  'FR',
+  'DE',
+  'NL',
+  'ES',
+  'GB',
+  'US',
+  'KP',
+  'IR',
+  'MM',
+  'CU',
+  'SY',
+  'RU'
+]);
+// const BLOCKED_COUNTRIES = new Set([]);
 const DEV_ALLOWLIST_IP = '217.155.49.78';
 
 const app = express();
@@ -68,16 +68,27 @@ const tmpUploadDir = path.join(__dirname, 'uploads', 'tmp');
 fs.mkdirSync(tmpUploadDir, { recursive: true });
 const upload = multer({ dest: tmpUploadDir });
 
-// Geo-blocking middleware
-app.use(async (req, res, next) => {
+app.get('/api/geo', async (req, res) => {
+  const geo = await lookupGeo(req);
+  res.json({ success: true, ...geo });
+});
+
+function getClientIp(req) {
   const rawIp =
     (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() ||
     req.ip ||
     '';
-  const ip = rawIp.replace('::ffff:', '');
+  return rawIp.replace('::ffff:', '');
+}
 
+async function lookupGeo(req) {
+  const ip = getClientIp(req);
+  return lookupGeoForIp(ip);
+}
+
+async function lookupGeoForIp(ip) {
   if (!ip || ip === DEV_ALLOWLIST_IP) {
-    return next();
+    return { ip, country: null, blocked: false };
   }
 
   try {
@@ -88,79 +99,30 @@ app.use(async (req, res, next) => {
     });
     clearTimeout(timeout);
 
-    if (!response.ok) return next();
+    if (!response.ok) {
+      return { ip, country: null, blocked: false };
+    }
     const data = await response.json();
     const country = (data.country || '').toUpperCase();
-
-    if (BLOCKED_COUNTRIES.has(country)) {
-      res.status(403);
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-      res.setHeader('Surrogate-Control', 'no-store');
-      res.type('html').send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Access Restricted</title>
-  <style>
-    :root {
-      color-scheme: only light;
-    }
-    * {
-      box-sizing: border-box;
-    }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: radial-gradient(circle at 30% 30%, #1f2a44, #0f172a 65%);
-      font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-      color: #f8fafc;
-      text-align: center;
-      padding: 24px;
-    }
-    .card {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 16px;
-      padding: 32px 28px;
-      width: min(520px, 100%);
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-      backdrop-filter: blur(6px);
-    }
-    h1 {
-      margin: 0 0 12px;
-      font-size: clamp(22px, 3vw, 28px);
-      letter-spacing: 0.3px;
-    }
-    p {
-      margin: 0;
-      font-size: clamp(16px, 2.5vw, 18px);
-      line-height: 1.5;
-      color: #e2e8f0;
-    }
-  </style>
-</head>
-<body>
-  <main class="card">
-    <h1>Access Restricted</h1>
-    <p>This IP is blocked due to restrictions of the gaming licence. Your region will be available in the future.</p>
-  </main>
-</body>
-</html>`);
-      return;
-    }
+    const blocked = BLOCKED_COUNTRIES.has(country);
+    return { ip, country, blocked };
   } catch (err) {
-    // Fail open on lookup errors
-    return next();
+    return { ip, country: null, blocked: false };
   }
+}
 
-  next();
-});
+function getSocketIp(socket) {
+  const rawIp =
+    (socket.handshake?.headers?.['x-forwarded-for'] || '').toString().split(',')[0].trim() ||
+    socket.handshake?.address ||
+    '';
+  return rawIp.replace('::ffff:', '');
+}
+
+async function lookupGeoForSocket(socket) {
+  const ip = getSocketIp(socket);
+  return lookupGeoForIp(ip);
+}
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
@@ -337,40 +299,59 @@ io.on('connection', (socket) => {
       socket.data.user = {
         id: user.userId || user.id,
         username: user.username,
-        balance: user.balance
+        balance: user.balance,
+        realBalance: user.realBalance || 0
       };
       socket.emit('user-registered', {
         userId: user.id,
         username: user.username,
         balance: user.balance,
-        balanceDisplay: user.balanceDisplay
+        balanceDisplay: user.balanceDisplay,
+        realBalance: user.realBalance || 0,
+        realBalanceDisplay: user.realBalanceDisplay
       });
     })
   );
 
   socket.on(
     'create-game',
-    safeAction(socket, async () => {
+    safeAction(socket, async ({ tableType } = {}) => {
       const user = ensureSocketUser(socket);
+      const walletType = tableType === 'real' ? 'real' : 'balance';
+      if (walletType === 'real') {
+        const geo = await lookupGeoForSocket(socket);
+        if (geo.blocked) {
+          throw new Error('Real-money tables are not available in your region.');
+        }
+      }
       const game = createGame(io, socket, {
         id: user.id,
         username: user.username,
-        balance: user.balance
-      });
-      socket.emit('game-created', { code: game.code });
+        balance: user.balance,
+        realBalance: user.realBalance || 0
+      }, { walletType });
+      socket.emit('game-created', { code: game.code, walletType });
     })
   );
 
   socket.on(
     'join-game',
-    safeAction(socket, async ({ code }) => {
+    safeAction(socket, async ({ code, tableType } = {}) => {
       const user = ensureSocketUser(socket);
+      const walletType = tableType === 'real' ? 'real' : 'balance';
+      if (walletType === 'real') {
+        const geo = await lookupGeoForSocket(socket);
+        if (geo.blocked) {
+          throw new Error('Real-money tables are not available in your region.');
+        }
+      }
       const game = joinGame(io, socket, {
         id: user.id,
         username: user.username,
-        balance: user.balance
-      }, code);
-      socket.emit('game-joined', { code: game.code });
+        balance: user.balance,
+        realBalance: user.realBalance || 0
+      }, code, walletType);
+      socket.emit('game-joined', { code: game.code, walletType: game.walletType });
     })
   );
 

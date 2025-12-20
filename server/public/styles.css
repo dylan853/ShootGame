@@ -122,6 +122,37 @@ body::before {
   z-index: 1;
 }
 
+.start-menu-taskbar {
+  position: absolute;
+  left: 50%;
+  bottom: 3%;
+  transform: translateX(-50%);
+  width: min(240px, 60vw);
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.start-menu-taskbar img {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+.start-menu-taskbar-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.start-menu-taskbar .taskbar-button {
+  position: absolute;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
 .start-menu-input {
   position: absolute !important;
   border: none !important;

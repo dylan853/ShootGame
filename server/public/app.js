@@ -136,8 +136,20 @@ const START_MENU_IMAGE_PATHS = {
   login: '/StartMenu/StartMenuLogin.jpg',
   password: '/StartMenu/StartMenuEnterPassword.jpg',
   authed: '/StartMenu/StartMenuRulesPlayLogout.jpg',
-  play: '/StartMenu/StartMenuCreateOrJoinTable.jpg'
+  play: '/StartMenu/StartMenuCreateOrJoinTable.jpg',
+  tableType: '/StartMenu/StartMenuTableTypeChooser.jpg'
 };
+
+const TASKBAR_DEFAULT_BASE = { width: 240, height: 70 };
+const TASKBAR_RECTS = [
+  { rect: [14, 14, 54, 55], handler: () => openStartMenuComplianceModal() },
+  { rect: [93, 14, 132, 55], handler: () => openStartMenuCashierModal() },
+  { rect: [175, 14, 213, 55], handler: () => openStartMenuSettingsModal() }
+];
+const TASKBAR_RECTS_BLOCKED = [
+  { rect: [50, 14, 91, 55], handler: () => openStartMenuComplianceModal() },
+  { rect: [140, 14, 179, 55], handler: () => openStartMenuSettingsModal() }
+];
 
 const COMPLIANCE_DOWNLOADS = [
   { rect: [37, 169, 125, 189], file: 'AML & CFT.pdf' },
@@ -193,7 +205,8 @@ const START_MENU_CLOSE_TARGETS = {
   register3: 'register2',
   login: 'landing',
   username: 'landing',
-  play: 'authed'
+  play: 'authed',
+  tableType: 'authed'
 };
 
 const MENU_COORDINATE_BASE = {
@@ -221,6 +234,9 @@ const startMenuRefs = {
   cashierOverlay: document.getElementById('start-menu-cashier-overlay'),
   cashierImage: document.getElementById('start-menu-cashier-image'),
   cashierClose: document.getElementById('start-menu-cashier-close'),
+  taskbar: document.getElementById('start-menu-taskbar'),
+  taskbarImage: document.getElementById('start-menu-taskbar-image'),
+  taskbarOverlay: document.getElementById('start-menu-taskbar-overlay'),
   closeBtn: document.getElementById('start-menu-close-btn'),
   appShell: document.getElementById('app')
 };
@@ -314,6 +330,7 @@ const startMenuState = {
   active: true,
   currentScreen: 'landing',
   loading: false,
+  isBlockedCountry: false,
   register: getDefaultRegisterForm(),
   registerError: '',
   login: getDefaultLoginForm(),
@@ -336,7 +353,8 @@ const startMenuState = {
     token: null
   },
   play: {
-    code: ''
+    code: '',
+    tableType: 'balance'
   }
 };
 
@@ -416,6 +434,7 @@ async function init() {
   initOrientationEnforcement();
   wireEvents();
   await loadConfig();
+  await loadGeoStatus();
   hydrateUser();
   render();
   await checkUsernameTokenFromQuery();
@@ -474,6 +493,9 @@ function wireEvents() {
     }
   });
   startMenuRefs.cashierImage?.addEventListener('load', renderCashierOverlay);
+  startMenuRefs.taskbarImage?.addEventListener('load', () =>
+    renderStartMenuTaskbar(startMenuState.currentScreen)
+  );
   startMenuRefs.closeBtn?.addEventListener('click', () => {
     const target =
       startMenuRefs.closeBtn?.getAttribute('data-target') ||
@@ -568,6 +590,9 @@ function cleanupStartMenuScreen(screenName, nextScreen) {
     startMenuState.username.value = '';
   } else if (screenName === 'play') {
     startMenuState.play.code = '';
+    if (startMenuState.isBlockedCountry) {
+      startMenuState.play.tableType = 'balance';
+    }
   } else if (screenName === 'password') {
     startMenuState.password = getDefaultPasswordChallenge();
   }
@@ -591,6 +616,7 @@ function renderStartMenuScreen() {
     startMenuRefs.image.onload = null;
     const { width, height } = getMenuDimensions();
     renderStartMenuOverlays(screenName, width, height);
+    renderStartMenuTaskbar(screenName);
     const closeTarget = START_MENU_CLOSE_TARGETS[screenName];
     if (closeTarget) {
       startMenuRefs.closeBtn?.classList.remove('hidden');
@@ -729,12 +755,15 @@ function renderStartMenuOverlays(screenName, width, height) {
       });
       break;
     case 'authed':
-      addMenuHotspot([9, 7, 52, 53], openStartMenuComplianceModal, { width, height });
       addMenuHotspot([30, 461, 98, 497], openStartMenuRulesModal, { width, height });
-      addMenuHotspot([108, 467, 163, 499], () => setStartMenuScreen('play'), { width, height });
+      addMenuHotspot([108, 467, 163, 499], handlePlayClick, { width, height });
       addMenuHotspot([693, 465, 791, 499], handleMenuLogout, { width, height });
-      addMenuHotspot([753, 18, 779, 42], openStartMenuSettingsModal, { width, height });
-      addMenuHotspot([721, 20, 743, 41], openStartMenuCashierModal, { width, height });
+      break;
+    case 'tableType':
+      addMenuHotspot([86, 88, 359, 340], () => selectTableType('balance'), { width, height });
+      if (!startMenuState.isBlockedCountry) {
+        addMenuHotspot([443, 90, 715, 342], () => selectTableType('real'), { width, height });
+      }
       break;
     case 'play':
       addMenuInput('play.code', [306, 188, 515, 218], {
@@ -775,6 +804,38 @@ function renderStartMenuOverlays(screenName, width, height) {
   }
 }
 
+function renderStartMenuTaskbar(screenName) {
+  const taskbar = startMenuRefs.taskbar;
+  const taskbarImage = startMenuRefs.taskbarImage;
+  const overlay = startMenuRefs.taskbarOverlay;
+  if (!taskbar || !taskbarImage || !overlay) return;
+
+  const shouldShow = screenName === 'authed';
+  taskbar.classList.toggle('hidden', !shouldShow);
+  if (!shouldShow) {
+    overlay.innerHTML = '';
+    return;
+  }
+
+  const imagePath = startMenuState.isBlockedCountry
+    ? '/StartMenu/bottomtaskbarblockedcountry.png'
+    : '/StartMenu/bottomtaskbar.png';
+
+  if (taskbarImage.getAttribute('src') !== imagePath) {
+    taskbarImage.setAttribute('src', imagePath);
+  }
+
+  overlay.innerHTML = '';
+
+  const baseWidth = taskbarImage.naturalWidth || TASKBAR_DEFAULT_BASE.width;
+  const baseHeight = taskbarImage.naturalHeight || TASKBAR_DEFAULT_BASE.height;
+  const rects = startMenuState.isBlockedCountry ? TASKBAR_RECTS_BLOCKED : TASKBAR_RECTS;
+
+  rects.forEach(({ rect, handler }) => {
+    addTaskbarHotspot(rect, handler, baseWidth, baseHeight);
+  });
+}
+
 function addMenuHotspot(rect, handler, options = {}) {
   if (!startMenuRefs.overlay) return;
   const btn = document.createElement('button');
@@ -789,6 +850,19 @@ function addMenuHotspot(rect, handler, options = {}) {
   btn.style.pointerEvents = 'auto';
   btn.style.zIndex = '10';
   startMenuRefs.overlay.appendChild(btn);
+}
+
+function addTaskbarHotspot(rect, handler, baseWidth, baseHeight) {
+  if (!startMenuRefs.taskbarOverlay) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'taskbar-button';
+  applyMenuRect(btn, rect, baseWidth, baseHeight);
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    handler();
+  });
+  startMenuRefs.taskbarOverlay.appendChild(btn);
 }
 
 function addMenuInput(path, rect, options = {}) {
@@ -1452,7 +1526,9 @@ function updateCashierComputed() {
 
   const balanceEl = overlay.querySelector('[data-cashier="balance"]');
   if (balanceEl) {
-    const bal = state.user?.balanceDisplay || (state.user?.balance !== undefined ? String(state.user.balance) : '?');
+    const bal =
+      state.user?.realBalanceDisplay ||
+      (state.user?.realBalance !== undefined ? pennies(state.user.realBalance) : '?');
     balanceEl.textContent = bal || '?';
   }
 
@@ -1941,6 +2017,8 @@ function setLoggedInUser(user) {
     cvrNumber: user.cvrNumber,
     balance: user.balance,
     balanceDisplay: user.balanceDisplay,
+    realBalance: user.realBalance || 0,
+    realBalanceDisplay: user.realBalanceDisplay || '0.00',
     passwordSet: Boolean(user.passwordSet)
     };
     syncSettingsFromUser();
@@ -1974,7 +2052,8 @@ function handleMenuLogout() {
 
 function handleMenuCreateTable() {
   if (!ensureAuthed()) return;
-  socket.emit('create-game');
+  const tableType = startMenuState.play.tableType === 'real' && !startMenuState.isBlockedCountry ? 'real' : 'balance';
+  socket.emit('create-game', { tableType });
   closeStartMenuShell();
 }
 
@@ -1984,7 +2063,8 @@ function handleMenuJoinTable() {
     toast('Enter a 5-letter table code.');
     return;
   }
-  socket.emit('join-game', { code: startMenuState.play.code.trim().toUpperCase() });
+  const tableType = startMenuState.play.tableType === 'real' && !startMenuState.isBlockedCountry ? 'real' : 'balance';
+  socket.emit('join-game', { code: startMenuState.play.code.trim().toUpperCase(), tableType });
   closeStartMenuShell();
 }
 
@@ -2011,6 +2091,38 @@ async function loadConfig() {
   } catch (err) {
     console.error('Config load failed', err);
   }
+}
+
+async function loadGeoStatus() {
+  try {
+    const res = await fetch('/api/geo');
+    const data = await res.json();
+    startMenuState.isBlockedCountry = Boolean(data.blocked);
+  } catch (err) {
+    startMenuState.isBlockedCountry = false;
+  } finally {
+    renderStartMenuTaskbar(startMenuState.currentScreen);
+  }
+}
+
+function handlePlayClick() {
+  if (startMenuState.isBlockedCountry) {
+    startMenuState.play.tableType = 'balance';
+    setStartMenuScreen('play');
+    return;
+  }
+  setStartMenuScreen('tableType');
+}
+
+function selectTableType(type) {
+  const chosen = type === 'real' ? 'real' : 'balance';
+  if (chosen === 'real' && startMenuState.isBlockedCountry) {
+    startMenuState.play.tableType = 'balance';
+    setStartMenuScreen('play', { force: true });
+    return;
+  }
+  startMenuState.play.tableType = chosen;
+  setStartMenuScreen('play', { force: true });
 }
 
 function ensureAuthed() {
@@ -2044,7 +2156,10 @@ function renderAuth() {
     refs.headerUser?.classList.remove('hidden');
     refs.headerSignin?.classList.add('hidden');
     if (refs.headerUsername) {
-      const balance = state.user.balanceDisplay || '';
+      const usingReal = state.game?.walletType === 'real';
+      const balance = usingReal
+        ? state.user.realBalanceDisplay || ''
+        : state.user.balanceDisplay || '';
       refs.headerUsername.textContent = balance
         ? `${state.user.username} · ${balance}`
         : state.user.username;
@@ -3369,7 +3484,9 @@ socket.on('user-registered', (user) => {
     userId: user.userId,
     username: user.username,
     balance: user.balance,
-    balanceDisplay: user.balanceDisplay
+    balanceDisplay: user.balanceDisplay,
+    realBalance: user.realBalance || 0,
+    realBalanceDisplay: user.realBalanceDisplay || '0.00'
   };
   render();
 });
@@ -3422,8 +3539,13 @@ function applyGameState(gameState) {
   state.game = gameState;
   const self = getSelf();
   if (state.user && self) {
-    state.user.balance = self.balance;
-    state.user.balanceDisplay = self.balanceDisplay;
+    if (gameState.walletType === 'real') {
+      state.user.realBalance = self.balance;
+      state.user.realBalanceDisplay = self.balanceDisplay;
+    } else {
+      state.user.balance = self.balance;
+      state.user.balanceDisplay = self.balanceDisplay;
+    }
   }
   if (gameState.state === 'lobby' && state.tableAnnouncement) {
     clearTableAnnouncement({ skipRender: true });

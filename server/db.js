@@ -8,6 +8,7 @@ const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 const STARTING_BALANCE = 5000; // pennies => £50.00
+const STARTING_REAL_BALANCE = 0;
 
 function penniesToDisplay(pence) {
   return `${(pence / 100).toFixed(2)}`;
@@ -55,6 +56,7 @@ function createModernUsersTable() {
       verification_token TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
       balance INTEGER NOT NULL DEFAULT ${STARTING_BALANCE},
+      real_balance INTEGER NOT NULL DEFAULT ${STARTING_REAL_BALANCE},
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -127,6 +129,7 @@ function ensureUserTable() {
   ensureColumn('email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0');
   ensureColumn('verification_token', 'verification_token TEXT');
   ensureColumn('status', "status TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn('real_balance', `real_balance INTEGER NOT NULL DEFAULT ${STARTING_REAL_BALANCE}`);
   ensureColumn('updated_at', 'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
   }
 
@@ -177,6 +180,8 @@ const insertUserStmt = db.prepare(`
     verification_token,
     status,
     balance
+    ,
+    real_balance
   ) VALUES (
     @id,
     @username,
@@ -217,10 +222,16 @@ const insertUserStmt = db.prepare(`
     @verificationToken,
     @status,
     @balance
+    ,
+    @realBalance
   )
 `);
 const updateBalanceStmt = db.prepare('UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
 const setBalanceStmt = db.prepare('UPDATE users SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+const updateRealBalanceStmt = db.prepare(
+  'UPDATE users SET real_balance = real_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+);
+const setRealBalanceStmt = db.prepare('UPDATE users SET real_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
 const updateUsernameStmt = db.prepare(
   'UPDATE users SET username = ?, alias_name = COALESCE(?, alias_name), status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
 );
@@ -231,10 +242,11 @@ const updateStatusStmt = db.prepare('UPDATE users SET status = ?, updated_at = C
 
 function mapUser(row) {
   if (!row) return null;
-    return {
+  return {
     ...row,
-    balanceDisplay: penniesToDisplay(row.balance)
-    };
+    balanceDisplay: penniesToDisplay(row.balance),
+    realBalanceDisplay: penniesToDisplay(row.real_balance || 0)
+  };
   }
 
 function createPendingUser({
@@ -311,7 +323,8 @@ function createPendingUser({
     emailVerified: 0,
     verificationToken,
     status: 'pending',
-    balance: STARTING_BALANCE
+    balance: STARTING_BALANCE,
+    realBalance: STARTING_REAL_BALANCE
   };
   insertUserStmt.run(user);
   return mapUser(user);
@@ -368,6 +381,19 @@ function applyBalanceDelta(userId, deltaPennies) {
 
 function setBalance(userId, pennies) {
   setBalanceStmt.run(pennies, userId);
+  return getUserById(userId);
+}
+
+function applyRealBalanceDelta(userId, deltaPennies) {
+  const info = updateRealBalanceStmt.run(deltaPennies, userId);
+  if (info.changes === 0) {
+    throw new Error('User not found when updating real balance');
+  }
+  return getUserById(userId);
+}
+
+function setRealBalance(userId, pennies) {
+  setRealBalanceStmt.run(pennies, userId);
   return getUserById(userId);
 }
 
@@ -438,7 +464,10 @@ module.exports = {
   updateUserStatus,
   applyBalanceDelta,
   setBalance,
+  applyRealBalanceDelta,
+  setRealBalance,
   updateUserSettings,
   penniesToDisplay,
-  STARTING_BALANCE
+  STARTING_BALANCE,
+  STARTING_REAL_BALANCE
 };

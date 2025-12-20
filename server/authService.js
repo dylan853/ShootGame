@@ -58,6 +58,8 @@ function sanitizeUser(user) {
     cvrNumber: user.cvr_number,
     balance: user.balance,
     balanceDisplay: penniesToDisplay(user.balance),
+    realBalance: user.real_balance || 0,
+    realBalanceDisplay: penniesToDisplay(user.real_balance || 0),
     passwordSet: Boolean(user.login_password_hash)
   };
 }
