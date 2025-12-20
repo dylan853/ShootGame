@@ -150,6 +150,9 @@ const TASKBAR_RECTS_BLOCKED = [
   { rect: [50, 14, 91, 55], handler: () => openStartMenuComplianceModal() },
   { rect: [140, 14, 179, 55], handler: () => openStartMenuSettingsModal() }
 ];
+const TASKBAR_RECTS_NOT_LOGGED = [
+  { rect: [97, 14, 139, 54], handler: () => openStartMenuComplianceModal() }
+];
 
 const COMPLIANCE_DOWNLOADS = [
   { rect: [37, 169, 125, 189], file: 'AML & CFT.pdf' },
@@ -649,7 +652,6 @@ function renderStartMenuOverlays(screenName, width, height) {
   startMenuRefs.overlay.dataset.wasLoading = String(startMenuState.loading);
   switch (screenName) {
     case 'landing':
-      addMenuHotspot([9, 7, 52, 53], openStartMenuComplianceModal, { width, height });
       addMenuHotspot([33, 468, 98, 498], openStartMenuRulesModal, { width, height });
       addMenuHotspot([106, 468, 205, 499], () => setStartMenuScreen('register1'), { width, height });
       addMenuHotspot([691, 465, 776, 499], () => setStartMenuScreen('login'), { width, height });
@@ -810,16 +812,23 @@ function renderStartMenuTaskbar(screenName) {
   const overlay = startMenuRefs.taskbarOverlay;
   if (!taskbar || !taskbarImage || !overlay) return;
 
-  const shouldShow = screenName === 'authed';
+  const isAuthedBar = screenName === 'authed';
+  const isLandingBar = screenName === 'landing' && !state.user;
+  const shouldShow = isAuthedBar || isLandingBar;
   taskbar.classList.toggle('hidden', !shouldShow);
   if (!shouldShow) {
     overlay.innerHTML = '';
     return;
   }
 
-  const imagePath = startMenuState.isBlockedCountry
-    ? '/StartMenu/bottomtaskbarblockedcountry.png'
-    : '/StartMenu/bottomtaskbar.png';
+  let imagePath = '/StartMenu/bottomtaskbar.png';
+  if (isAuthedBar) {
+    imagePath = startMenuState.isBlockedCountry
+      ? '/StartMenu/bottomtaskbarblockedcountry.png'
+      : '/StartMenu/bottomtaskbar.png';
+  } else if (isLandingBar) {
+    imagePath = '/StartMenu/bottomtaskbarnotloggedin.png';
+  }
 
   if (taskbarImage.getAttribute('src') !== imagePath) {
     taskbarImage.setAttribute('src', imagePath);
@@ -829,7 +838,12 @@ function renderStartMenuTaskbar(screenName) {
 
   const baseWidth = taskbarImage.naturalWidth || TASKBAR_DEFAULT_BASE.width;
   const baseHeight = taskbarImage.naturalHeight || TASKBAR_DEFAULT_BASE.height;
-  const rects = startMenuState.isBlockedCountry ? TASKBAR_RECTS_BLOCKED : TASKBAR_RECTS;
+  let rects = TASKBAR_RECTS;
+  if (isAuthedBar) {
+    rects = startMenuState.isBlockedCountry ? TASKBAR_RECTS_BLOCKED : TASKBAR_RECTS;
+  } else if (isLandingBar) {
+    rects = TASKBAR_RECTS_NOT_LOGGED;
+  }
 
   rects.forEach(({ rect, handler }) => {
     addTaskbarHotspot(rect, handler, baseWidth, baseHeight);
