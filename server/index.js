@@ -1,12 +1,14 @@
 const path = require('path');
 const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
 const multer = require('multer');
 const {
-  getUserById
+  getUserById,
+  STARTING_BALANCE
 } = require('./db');
 const {
   registerUser,
@@ -25,6 +27,7 @@ const {
   STAKE_OPTIONS,
   createGame,
   joinGame,
+  findJoinableDemoGame,
   toggleReady,
   dealerRevealWithMinimum,
   setDealerStake,
@@ -117,6 +120,29 @@ function getSocketIp(socket) {
     socket.handshake?.address ||
     '';
   return rawIp.replace('::ffff:', '');
+}
+
+function formatPennies(value) {
+  const pennies = Number.isFinite(value) ? value : 0;
+  return `£${(pennies / 100).toFixed(2)}`;
+}
+
+function ensureGuestIdentity(socket) {
+  if (socket.data.user && socket.data.user.isGuest) {
+    socket.data.user.balance = STARTING_BALANCE;
+    socket.data.user.realBalance = 0;
+    socket.data.user.username = '';
+    return socket.data.user;
+  }
+  const guestUser = {
+    id: `guest-${uuidv4()}`,
+    username: '',
+    balance: STARTING_BALANCE,
+    realBalance: 0,
+    isGuest: true
+  };
+  socket.data.user = guestUser;
+  return guestUser;
 }
 
 async function lookupGeoForSocket(socket) {
@@ -314,6 +340,22 @@ io.on('connection', (socket) => {
   );
 
   socket.on(
+    'register-guest',
+    safeAction(socket, async () => {
+      const guest = ensureGuestIdentity(socket);
+      socket.emit('guest-registered', {
+        userId: guest.id,
+        username: guest.username,
+        balance: guest.balance,
+        balanceDisplay: formatPennies(guest.balance),
+        realBalance: 0,
+        realBalanceDisplay: formatPennies(0),
+        isGuest: true
+      });
+    })
+  );
+
+  socket.on(
     'create-game',
     safeAction(socket, async ({ tableType } = {}) => {
       const user = ensureSocketUser(socket);
@@ -335,6 +377,15 @@ io.on('connection', (socket) => {
   );
 
   socket.on(
+    'create-demo-table',
+    safeAction(socket, async () => {
+      const guest = ensureGuestIdentity(socket);
+      const game = createGame(io, socket, guest, { walletType: 'balance', isDemo: true });
+      socket.emit('game-created', { code: game.code, walletType: game.walletType, isDemo: true });
+    })
+  );
+
+  socket.on(
     'join-game',
     safeAction(socket, async ({ code, tableType } = {}) => {
       const user = ensureSocketUser(socket);
@@ -352,6 +403,21 @@ io.on('connection', (socket) => {
         realBalance: user.realBalance || 0
       }, code, walletType);
       socket.emit('game-joined', { code: game.code, walletType: game.walletType });
+    })
+  );
+
+  socket.on(
+    'join-demo-table',
+    safeAction(socket, async () => {
+      const guest = ensureGuestIdentity(socket);
+      const openGame = findJoinableDemoGame();
+      if (openGame) {
+        const game = joinGame(io, socket, guest, openGame.code, 'balance');
+        socket.emit('game-joined', { code: game.code, walletType: game.walletType, isDemo: true });
+        return;
+      }
+      const game = createGame(io, socket, guest, { walletType: 'balance', isDemo: true });
+      socket.emit('game-created', { code: game.code, walletType: game.walletType, isDemo: true });
     })
   );
 

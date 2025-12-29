@@ -237,6 +237,10 @@ const startMenuRefs = {
   cashierOverlay: document.getElementById('start-menu-cashier-overlay'),
   cashierImage: document.getElementById('start-menu-cashier-image'),
   cashierClose: document.getElementById('start-menu-cashier-close'),
+  demoModal: document.getElementById('start-menu-demo-modal'),
+  demoCreate: document.getElementById('start-menu-demo-create'),
+  demoJoin: document.getElementById('start-menu-demo-join'),
+  demoClose: document.getElementById('start-menu-demo-close'),
   taskbar: document.getElementById('start-menu-taskbar'),
   taskbarImage: document.getElementById('start-menu-taskbar-image'),
   taskbarOverlay: document.getElementById('start-menu-taskbar-overlay'),
@@ -350,6 +354,7 @@ const startMenuState = {
     priceDisplay: '',
     message: ''
   },
+  demoPromptShown: false,
   verificationToken: null,
   username: {
     value: '',
@@ -441,6 +446,7 @@ async function init() {
   hydrateUser();
   render();
   await checkUsernameTokenFromQuery();
+  maybeShowDemoPrompt();
 }
 
 function wireEvents() {
@@ -496,6 +502,14 @@ function wireEvents() {
     }
   });
   startMenuRefs.cashierImage?.addEventListener('load', renderCashierOverlay);
+  startMenuRefs.demoCreate?.addEventListener('click', () => handleDemoChoice('create'));
+  startMenuRefs.demoJoin?.addEventListener('click', () => handleDemoChoice('join'));
+  startMenuRefs.demoClose?.addEventListener('click', hideDemoPrompt);
+  startMenuRefs.demoModal?.addEventListener('click', (event) => {
+    if (event.target === startMenuRefs.demoModal || event.target.classList.contains('start-menu-demo-backdrop')) {
+      hideDemoPrompt();
+    }
+  });
   startMenuRefs.taskbarImage?.addEventListener('load', () =>
     renderStartMenuTaskbar(startMenuState.currentScreen)
   );
@@ -599,6 +613,17 @@ function cleanupStartMenuScreen(screenName, nextScreen) {
   } else if (screenName === 'password') {
     startMenuState.password = getDefaultPasswordChallenge();
   }
+}
+
+function maybeShowDemoPrompt() {
+  if (!startMenuRefs.demoModal || startMenuState.demoPromptShown) return;
+  startMenuState.demoPromptShown = true;
+  startMenuRefs.demoModal.classList.remove('hidden');
+}
+
+function hideDemoPrompt() {
+  if (!startMenuRefs.demoModal) return;
+  startMenuRefs.demoModal.classList.add('hidden');
 }
 
 function getMenuDimensions() {
@@ -2001,6 +2026,43 @@ async function handleSettingsSave() {
   }
 }
 
+function setGuestUser(user) {
+  const balance = Number(user?.balance) || 0;
+  state.user = {
+    userId: user.userId || user.id,
+    username: user.username || '',
+    balance,
+    balanceDisplay: user.balanceDisplay || pennies(balance),
+    realBalance: 0,
+    realBalanceDisplay: pennies(0),
+    isGuest: true
+  };
+  startMenuState.play.tableType = 'balance';
+  render();
+}
+
+function ensureGuestRegistered() {
+  if (state.user?.isGuest) {
+    return Promise.resolve(state.user);
+  }
+  return new Promise((resolve, reject) => {
+    const handler = (user) => {
+      cleanup();
+      resolve(user);
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error('Unable to start the demo right now. Please try again.'));
+    }, 4000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      socket.off('guest-registered', handler);
+    };
+    socket.on('guest-registered', handler);
+    socket.emit('register-guest');
+  });
+}
+
 function setLoggedInUser(user) {
   if (!user) return;
     state.user = {
@@ -2064,6 +2126,27 @@ async function refreshUserProfile() {
 
 function handleMenuLogout() {
   handleSignOut();
+}
+
+async function handleDemoChoice(mode) {
+  hideDemoPrompt();
+  startMenuState.loading = true;
+  renderStartMenuScreen();
+  try {
+    await ensureGuestRegistered();
+    startMenuState.play.tableType = 'balance';
+    if (mode === 'create') {
+      socket.emit('create-demo-table');
+    } else {
+      socket.emit('join-demo-table');
+    }
+    closeStartMenuShell();
+  } catch (err) {
+    toast(err.message || 'Unable to start the demo.');
+  } finally {
+    startMenuState.loading = false;
+    renderStartMenuScreen();
+  }
 }
 
 function handleMenuCreateTable() {
@@ -2152,6 +2235,10 @@ function ensureAuthed() {
 
 function registerWithSocket() {
   if (!state.user) return;
+  if (state.user.isGuest) {
+    socket.emit('register-guest');
+    return;
+  }
   socket.emit('register-user', { userId: state.user.userId });
 }
 
@@ -3507,6 +3594,10 @@ socket.on('user-registered', (user) => {
   render();
 });
 
+socket.on('guest-registered', (user) => {
+  setGuestUser(user);
+});
+
 socket.on('game-created', ({ code }) => {
   toast(`Table created. Code ${code}`);
 });
@@ -3555,6 +3646,9 @@ function applyGameState(gameState) {
   state.game = gameState;
   const self = getSelf();
   if (state.user && self) {
+    if (self.username && state.user.username !== self.username) {
+      state.user.username = self.username;
+    }
     if (gameState.walletType === 'real') {
       state.user.realBalance = self.balance;
       state.user.realBalanceDisplay = self.balanceDisplay;

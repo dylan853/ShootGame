@@ -152,9 +152,10 @@ function roomName(code) {
 function newPlayerState(user, socketId, seat, walletType = 'balance') {
   const usingReal = walletType === 'real';
   const walletBalance = usingReal ? user.realBalance : user.balance;
+  const username = user.username || `Player ${seat + 1}`;
   return {
     userId: user.id,
-    username: user.username,
+    username,
     socketId,
     seat,
     ready: false,
@@ -164,7 +165,8 @@ function newPlayerState(user, socketId, seat, walletType = 'balance') {
     turnsTaken: 0,
     gamesWon: 0,
     status: 'waiting',
-    roundContribution: 0
+    roundContribution: 0,
+    isGuest: Boolean(user.isGuest)
   };
 }
 
@@ -273,7 +275,13 @@ function applyWalletDelta(game, player, deltaPennies) {
   if (nextBalance < 0) {
     throw new Error('Insufficient balance for this action.');
   }
-  if (game.walletType === 'real') {
+  const skipPersistence = game.isDemo || player.isGuest || !player.userId;
+  const usingReal = game.walletType === 'real';
+  if (skipPersistence) {
+    player.balance = nextBalance;
+    return usingReal ? { real_balance: nextBalance } : { balance: nextBalance };
+  }
+  if (usingReal) {
     const updated = applyRealBalanceDelta(player.userId, deltaPennies);
     player.balance = updated.real_balance;
     return updated;
@@ -381,7 +389,16 @@ function cycleDealerCard(game) {
   if (!nextCard) return;
   nextCard.revealed = false;
   game.dealerCard = nextCard;
-  addMessage(game, 'Dealer draws a new face-down card.');
+  if (shouldAutoRevealDealer(game)) {
+    game.dealerCard.revealed = true;
+    addMessage(game, 'Dealer draws a new card and reveals it for this round.');
+  } else {
+    addMessage(game, 'Dealer draws a new face-down card.');
+  }
+}
+
+function shouldAutoRevealDealer(game) {
+  return (game.currentRound || 1) >= 2;
 }
 
 function collectMinimumBetFromPlayers(game) {
@@ -418,11 +435,20 @@ function skipRoundAfterDealerKing(io, game) {
   const current = Number.isFinite(game.currentRound) ? game.currentRound : 1;
   game.currentRound = current + 1;
   game.turnsThisRound = 0;
+  if (game.currentRound > 3) {
+    const dealerIdx = game.dealerIndex;
+    addMessage(game, 'Three rounds are complete. Dealer claims the pot.');
+    endGame(io, game, dealerIdx);
+    return;
+  }
   emitState(io, game);
   schedule(game, () => {
     if (!games.has(game.code)) return;
     cycleDealerCard(game);
     dealNewRoundCards(game);
+    if (shouldAutoRevealDealer(game) && game.dealerCard && !game.dealerCard.revealed) {
+      revealDealerCard(game);
+    }
     emitState(io, game);
     game.kingSkipInProgress = false;
     maybeHandleDealerKing(io, game);
@@ -590,6 +616,7 @@ function clearPending(game) {
 function sanitizeGame(game) {
   return {
     code: game.code,
+    isDemo: Boolean(game.isDemo),
     walletType: game.walletType || 'balance',
     state: game.state,
     minPlayers: MIN_PLAYERS,
@@ -653,7 +680,7 @@ function emitState(io, game) {
   io.to(roomName(game.code)).emit('game-state', sanitizeGame(game));
 }
 
-function createGame(io, socket, user, { walletType = 'balance' } = {}) {
+function createGame(io, socket, user, { walletType = 'balance', isDemo = false } = {}) {
   if (socketToGame.has(socket.id)) {
     throw new Error('You are already seated at a table.');
   }
@@ -680,7 +707,8 @@ function createGame(io, socket, user, { walletType = 'balance' } = {}) {
     currentPlayerIndex: null,
     turnsThisRound: 0,
     dealerDraws: [],
-    kingSkipInProgress: false
+    kingSkipInProgress: false,
+    isDemo
   };
   games.set(code, game);
   socketToGame.set(socket.id, code);
@@ -885,14 +913,6 @@ function handleStake(io, socketId) {
   if (!game.dealerCard) {
     throw new Error('Dealer card has not been revealed yet.');
   }
-  let kingHandled = false;
-  if (!game.dealerCard.revealed) {
-    revealDealerCard(game);
-    kingHandled = maybeHandleDealerKing(io, game);
-    if (kingHandled) {
-      return;
-    }
-  }
   if (player.balance < MINIMUM_STAKE) {
     throw new Error('Insufficient balance for the minimum stake.');
   }
@@ -909,6 +929,14 @@ function handleStake(io, socketId) {
     amount: stake,
     mode: 'stake'
   });
+  if (!game.dealerCard.revealed) {
+    revealDealerCard(game);
+    const kingHandled = maybeHandleDealerKing(io, game);
+    if (kingHandled) {
+      return;
+    }
+  }
+  emitState(io, game); // ensure dealer reveal is visible before player cards flip
   schedule(game, () => {
     if (!games.has(game.code)) {
       return;
@@ -998,11 +1026,6 @@ function handleBet(io, socketId, amount) {
   if (!game.dealerCard) {
     throw new Error('Dealer card has not been revealed yet.');
   }
-  if (game.dealerCard && !game.dealerCard.revealed) {
-    revealDealerCard(game);
-    const handled = maybeHandleDealerKing(io, game);
-    if (handled) return;
-  }
   const parsed = Number(amount);
   const minBet = MINIMUM_STAKE + 10; // 10p more than minimum stake
   const shootCost = Math.max(game.pot, MINIMUM_STAKE);
@@ -1032,6 +1055,12 @@ function handleBet(io, socketId, amount) {
     amount: stake,
     mode: 'bet'
   });
+  if (game.dealerCard && !game.dealerCard.revealed) {
+    revealDealerCard(game);
+    const handled = maybeHandleDealerKing(io, game);
+    if (handled) return;
+  }
+  emitState(io, game); // ensure dealer reveal is visible before player cards flip
   schedule(game, () => {
     if (!games.has(game.code)) {
       return;
@@ -1403,6 +1432,12 @@ function completeTurn(io, game) {
       game.turnsThisRound = 0;
       // Increment round number for next round
       game.currentRound = (game.currentRound || 1) + 1;
+      if (game.currentRound > 3) {
+        const dealerIdx = game.dealerIndex;
+        addMessage(game, 'Three rounds are complete. Dealer claims the pot.');
+        endGame(io, game, dealerIdx);
+        return;
+      }
       // Delay before starting next round to allow players to see results
       addMessage(game, 'Round complete. Next round starting...');
       emitState(io, game);
@@ -1410,6 +1445,9 @@ function completeTurn(io, game) {
         if (!games.has(game.code)) return;
         cycleDealerCard(game);
         dealNewRoundCards(game);
+        if (shouldAutoRevealDealer(game) && game.dealerCard && !game.dealerCard.revealed) {
+          revealDealerCard(game);
+        }
         emitState(io, game);
         maybeHandleDealerKing(io, game);
       }, ROUND_TRANSITION_DELAY);
@@ -1560,6 +1598,20 @@ function leaveGame(io, socketId) {
   emitState(io, game);
 }
 
+function findJoinableDemoGame() {
+  for (const game of games.values()) {
+    if (
+      game.isDemo &&
+      game.walletType === 'balance' &&
+      game.state === 'lobby' &&
+      game.players.length < MAX_PLAYERS
+    ) {
+      return game;
+    }
+  }
+  return null;
+}
+
 module.exports = {
   MIN_PLAYERS,
   MAX_PLAYERS,
@@ -1568,6 +1620,7 @@ module.exports = {
   STAKE_OPTIONS,
   createGame,
   joinGame,
+  findJoinableDemoGame,
   toggleReady,
   dealerRevealWithMinimum,
   setDealerStake,
